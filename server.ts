@@ -63,7 +63,7 @@ async function initDb() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         license_plate VARCHAR(50) NOT NULL,
-        status ENUM('Active', 'Expiring', 'Storage', 'Maintenance') DEFAULT 'Active',
+        status ENUM('Active', 'Inactive') DEFAULT 'Active',
         next_service_date VARCHAR(50),
         next_service_odometer INT DEFAULT 0,
         current_odometer INT DEFAULT 0,
@@ -74,8 +74,9 @@ async function initDb() {
         insurance_policy_no VARCHAR(255),
         insurance_expiry VARCHAR(50),
         revenue_license_expiry VARCHAR(50),
-        revenue_license_region VARCHAR(100)
-      )
+        revenue_license_region VARCHAR(100),
+        ownership VARCHAR(255)
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
     console.log("Creating 'service_history' table...");
@@ -91,7 +92,7 @@ async function initDb() {
         cost DECIMAL(10, 2),
         parts LONGTEXT,
         labor_cost DECIMAL(10, 2)
-      )
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
     console.log("Creating 'system_updates' table...");
@@ -101,7 +102,7 @@ async function initDb() {
         message TEXT NOT NULL,
         is_new BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
     console.log("Creating 'upcoming_services' table...");
@@ -116,7 +117,7 @@ async function initDb() {
         priority ENUM('Low', 'Medium', 'High') DEFAULT 'Medium',
         status ENUM('Pending', 'Completed') DEFAULT 'Pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
     console.log("Creating 'vehicle_images' table...");
@@ -128,7 +129,7 @@ async function initDb() {
         description TEXT,
         image_url LONGTEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
     console.log("Creating 'users' table...");
@@ -140,7 +141,7 @@ async function initDb() {
         role ENUM('admin', 'user') DEFAULT 'user',
         profile_image_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
     // Seed admin user
@@ -179,9 +180,27 @@ async function initDb() {
         console.log("Adding 'profile_image_url' column to 'users' table...");
         await dbPool.query("ALTER TABLE \`users\` ADD COLUMN profile_image_url TEXT AFTER role");
       }
-      console.log("Columns verified/added.");
+
+      const [existingOwnershipColumn]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'ownership'");
+      if (existingOwnershipColumn.length === 0) {
+        console.log("Adding 'ownership' column to 'vehicles' table...");
+        await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN ownership VARCHAR(255) AFTER revenue_license_region");
+      }
+
+      // Update status ENUM if needed
+      console.log("Updating 'status' ENUM in 'vehicles' table...");
+      await dbPool.query("ALTER TABLE \`vehicles\` MODIFY COLUMN status ENUM('Active', 'Inactive') DEFAULT 'Active'");
+
+      // Ensure all tables are unicode supported (Migrations for existing tables)
+      console.log("Ensuring all tables use utf8mb4...");
+      const tables = ['vehicles', 'service_history', 'system_updates', 'upcoming_services', 'vehicle_images', 'users'];
+      for (const table of tables) {
+        await dbPool.query(`ALTER TABLE \`${table}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+      }
+
+      console.log("Columns verified/added and Unicode conversion complete.");
     } catch (err) {
-      console.error("Column check/add failed:", err);
+      console.error("Column check/add or Unicode conversion failed:", err);
     }
 
     // Seed initial data if empty - REMOVED AS PER USER REQUEST
@@ -253,6 +272,7 @@ app.get("/api/vehicles", async (req, res) => {
       insuranceExpiry: row.insurance_expiry,
       revenueLicenseExpiry: row.revenue_license_expiry,
       revenueLicenseRegion: row.revenue_license_region,
+      ownership: row.ownership,
     }));
     res.json(mappedRows);
   } catch (error: any) {
@@ -334,7 +354,7 @@ app.post("/api/vehicles", async (req, res) => {
   const vehicle = req.body;
   try {
     const [result] = await dbPool.query(
-      "INSERT INTO \`vehicles\` (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, chassis_no, engine_no, registration_date, insurance_policy_no, insurance_expiry, revenue_license_expiry, revenue_license_region) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO \`vehicles\` (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, chassis_no, engine_no, registration_date, insurance_policy_no, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -350,6 +370,7 @@ app.post("/api/vehicles", async (req, res) => {
         vehicle.insuranceExpiry,
         vehicle.revenueLicenseExpiry,
         vehicle.revenueLicenseRegion,
+        vehicle.ownership,
       ]
     );
     res.status(201).json({ id: (result as any).insertId, ...vehicle });
@@ -372,7 +393,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
   const vehicle = req.body;
   try {
     await dbPool.query(
-      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, chassis_no = ?, engine_no = ?, registration_date = ?, insurance_policy_no = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ? WHERE id = ?",
+      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, chassis_no = ?, engine_no = ?, registration_date = ?, insurance_policy_no = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ?, ownership = ? WHERE id = ?",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -388,6 +409,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
         vehicle.insuranceExpiry,
         vehicle.revenueLicenseExpiry,
         vehicle.revenueLicenseRegion,
+        vehicle.ownership,
         vehicleId,
       ]
     );

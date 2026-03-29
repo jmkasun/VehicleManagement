@@ -28,7 +28,7 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
       </div>
 
       <div className="flex gap-2 mt-6 overflow-x-auto pb-2 no-scrollbar">
-          {['All Vehicles', 'Active', 'Expiring', 'Maintenance'].map((filter, i) => (
+          {['All Vehicles', 'Active', 'Inactive'].map((filter, i) => (
             <button 
               key={filter}
               className={cn(
@@ -61,9 +61,7 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
                 <div className="absolute top-3 left-3">
                   <span className={cn(
                     "text-[9px] font-black px-2 py-1 rounded-full uppercase tracking-wider shadow-sm",
-                    vehicle.status === 'Active' ? "bg-emerald-400 text-white" :
-                    vehicle.status === 'Expiring' ? "bg-amber-400 text-white" :
-                    "bg-slate-500 text-white"
+                    vehicle.status === 'Active' ? "bg-emerald-400 text-white" : "bg-slate-500 text-white"
                   )}>
                     {vehicle.status}
                   </span>
@@ -83,17 +81,10 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
                 </div>
                 
                 <div className="mt-6 pt-4 border-t border-outline-variant/10 flex items-center gap-3">
-                  {vehicle.status === 'Expiring' ? (
-                    <AlertTriangle className="w-5 h-5 text-amber-500" />
-                  ) : (
-                    <Calendar className="w-5 h-5 text-outline-variant" />
-                  )}
+                  <Calendar className="w-5 h-5 text-outline-variant" />
                   <div className="flex flex-col">
                     <span className="text-[9px] text-on-surface-variant font-black leading-none uppercase tracking-widest">Next Service</span>
-                    <span className={cn(
-                      "text-xs font-bold mt-1",
-                      vehicle.status === 'Expiring' ? "text-amber-600" : "text-on-surface"
-                    )}>
+                    <span className="text-xs font-bold mt-1 text-on-surface">
                       {vehicle.nextServiceDate}
                     </span>
                   </div>

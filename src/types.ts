@@ -1,4 +1,4 @@
-export type VehicleStatus = 'Active' | 'Expiring' | 'Storage' | 'Maintenance';
+export type VehicleStatus = 'Active' | 'Inactive';
 
 export interface ServiceRecord {
   id: string;

@@ -24,6 +24,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
     insuranceExpiry: '',
     revenueLicenseExpiry: '',
     revenueLicenseRegion: 'Western',
+    ownership: '',
   });
 
   React.useEffect(() => {
@@ -43,6 +44,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
         insuranceExpiry: '',
         revenueLicenseExpiry: '',
         revenueLicenseRegion: 'Western',
+        ownership: '',
       });
     }
   }, [vehicle, isOpen]);
@@ -158,15 +160,14 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Initial Status</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Status</label>
                     <select 
                       className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
                       value={formData.status}
                       onChange={e => setFormData({ ...formData, status: e.target.value as VehicleStatus })}
                     >
                       <option value="Active">Active</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Storage">Storage</option>
+                      <option value="Inactive">Inactive</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -279,6 +280,17 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                       onChange={e => setFormData({ ...formData, revenueLicenseRegion: e.target.value })}
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Ownership</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Company Owned / Leased"
+                    className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
+                    value={formData.ownership}
+                    onChange={e => setFormData({ ...formData, ownership: e.target.value })}
+                  />
                 </div>
               </section>
 
