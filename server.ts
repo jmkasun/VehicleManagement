@@ -1,4 +1,5 @@
 import express from "express";
+import { createServer as createViteServer } from "vite";
 import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
@@ -8,19 +9,8 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-export default app; // Export for Vercel
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// Middleware to ensure DB is initialized before handling requests on Vercel
-let isDbInitialized = false;
-app.use(async (req, res, next) => {
-  if (!isDbInitialized && process.env.VERCEL) {
-    await initDb();
-    isDbInitialized = true;
-  }
-  next();
-});
 
 // MySQL Connection Pool
 let pool: mysql.Pool | null = null;
@@ -34,10 +24,6 @@ function getPool() {
       password: process.env.MYSQL_PASSWORD,
       database: process.env.MYSQL_DATABASE,
       port: parseInt(process.env.MYSQL_PORT || "3306"),
-      ssl: {
-        // This is often required by cloud providers when connecting from Vercel
-        rejectUnauthorized: false, 
-      },
     };
 
     const missing = [];
@@ -714,26 +700,24 @@ app.post("/api/login", async (req, res) => {
 
 // Vite middleware for development
 async function setupVite() {
-  // Only setup Vite if we are in development and NOT on Vercel
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    const { createServer: createViteServer } = await import("vite");
+  await initDb();
+  if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
 }
 
-// Initialize DB and setup environment
-initDb().then(() => {
-  if (!process.env.VERCEL) {
-    setupVite();
-  }
-}).catch(err => {
-  console.error("Critical: Initialization failed", err);
-});
+setupVite();
