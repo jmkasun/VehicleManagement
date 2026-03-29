@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
@@ -25,6 +24,10 @@ function getPool() {
       password: process.env.MYSQL_PASSWORD,
       database: process.env.MYSQL_DATABASE,
       port: parseInt(process.env.MYSQL_PORT || "3306"),
+      ssl: {
+        // This is often required by cloud providers when connecting from Vercel
+        rejectUnauthorized: false, 
+      },
     };
 
     const missing = [];
@@ -701,27 +704,26 @@ app.post("/api/login", async (req, res) => {
 
 // Vite middleware for development
 async function setupVite() {
-  await initDb();
-  if (process.env.NODE_ENV !== "production") {
+  // Only setup Vite if we are in development and NOT on Vercel
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
 
-  // Only listen if not running as a serverless function
-  if (process.env.VITE_DEV === 'true' || process.env.NODE_ENV !== 'production') {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   }
 }
 
-setupVite();
+// Initialize DB and setup environment
+initDb().then(() => {
+  if (!process.env.VERCEL) {
+    setupVite();
+  }
+}).catch(err => {
+  console.error("Critical: Initialization failed", err);
+});
