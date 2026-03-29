@@ -12,6 +12,16 @@ export default app; // Export for Vercel
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Middleware to ensure DB is initialized before handling requests on Vercel
+let isDbInitialized = false;
+app.use(async (req, res, next) => {
+  if (!isDbInitialized && process.env.VERCEL) {
+    await initDb();
+    isDbInitialized = true;
+  }
+  next();
+});
+
 // MySQL Connection Pool
 let pool: mysql.Pool | null = null;
 let lastInitError: string | null = null;
