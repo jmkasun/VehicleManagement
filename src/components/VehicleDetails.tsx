@@ -161,12 +161,10 @@ Vehicle: ${vehicle.name}
 License Plate: ${vehicle.licensePlate}
 Model Year: ${vehicle.modelYear}
 Engine CC: ${vehicle.engineCc}
-Chassis No: ${vehicle.chassisNo}
 Ownership: ${vehicle.ownership}
 
 REGISTRATION & COMPLIANCE
 -------------------------
-Insurance Policy: ${vehicle.insurancePolicyNo}
 Insurance Expiry: ${vehicle.insuranceExpiry}
 Revenue License Region: ${vehicle.revenueLicenseRegion}
 Revenue License Expiry: ${vehicle.revenueLicenseExpiry}
@@ -340,7 +338,6 @@ Generated on: ${new Date().toLocaleString()}
               {[
                 { label: 'Model Year', value: vehicle.modelYear },
                 { label: 'Engine CC', value: vehicle.engineCc },
-                { label: 'Chassis No.', value: vehicle.chassisNo },
                 { label: 'Ownership', value: vehicle.ownership },
               ].map((item) => (
                 <div key={item.label} className="space-y-1.5">
@@ -403,7 +400,6 @@ Generated on: ${new Date().toLocaleString()}
           </div>
           <div>
             <h3 className="text-xl font-black tracking-tight mb-1">Insurance</h3>
-            <p className="text-[10px] text-on-surface-variant font-black uppercase tracking-widest mb-6">Policy: {vehicle.insurancePolicyNo}</p>
             <div className="bg-surface-container-low p-4 rounded-2xl mb-6 relative group/cal">
               <span className="text-[9px] font-black text-on-surface-variant uppercase tracking-widest block mb-1 opacity-60">Expires On</span>
               <p className="text-xl font-black text-on-surface">{vehicle.insuranceExpiry}</p>
@@ -411,7 +407,7 @@ Generated on: ${new Date().toLocaleString()}
                 href={createGoogleCalendarLink(
                   `Insurance Renewal: ${vehicle.name} (${vehicle.licensePlate})`,
                   vehicle.insuranceExpiry,
-                  `Vehicle: ${vehicle.name}\nLicense Plate: ${vehicle.licensePlate}\nInsurance Policy No: ${vehicle.insurancePolicyNo}\n\nThis insurance policy is due to expire in 3 days. Please arrange for renewal to avoid any coverage gaps.`,
+                  `Vehicle: ${vehicle.name}\nLicense Plate: ${vehicle.licensePlate}\n\nThis insurance policy is due to expire in 3 days. Please arrange for renewal to avoid any coverage gaps.`,
                   `${vehicle.id}_insurance`
                 )}
                 target="_blank"

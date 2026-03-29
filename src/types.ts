@@ -42,14 +42,13 @@ export interface Vehicle {
   currentOdometer: number;
   modelYear: string;
   engineCc: string;
-  chassisNo: string;
   ownership: string;
   lastUpdated: string;
-  insurancePolicyNo: string;
   insuranceExpiry: string;
   revenueLicenseRegion: string;
   revenueLicenseExpiry: string;
   images?: VehicleImage[];
+  isTransferred: boolean;
 }
 
 export interface Alert {

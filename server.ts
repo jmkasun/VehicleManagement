@@ -68,14 +68,13 @@ async function initDb() {
         next_service_odometer INT DEFAULT 0,
         current_odometer INT DEFAULT 0,
         image_url LONGTEXT,
-        chassis_no VARCHAR(255),
         engine_no VARCHAR(255),
         registration_date VARCHAR(50),
-        insurance_policy_no VARCHAR(255),
         insurance_expiry VARCHAR(50),
         revenue_license_expiry VARCHAR(50),
         revenue_license_region VARCHAR(100),
-        ownership VARCHAR(255)
+        ownership VARCHAR(255),
+        is_transferred BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -187,6 +186,12 @@ async function initDb() {
         await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN ownership VARCHAR(255) AFTER revenue_license_region");
       }
 
+      const [existingTransferredColumn]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'is_transferred'");
+      if (existingTransferredColumn.length === 0) {
+        console.log("Adding 'is_transferred' column to 'vehicles' table...");
+        await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_transferred BOOLEAN DEFAULT FALSE AFTER ownership");
+      }
+
       // Update status ENUM if needed
       console.log("Updating 'status' ENUM in 'vehicles' table...");
       await dbPool.query("ALTER TABLE \`vehicles\` MODIFY COLUMN status ENUM('Active', 'Inactive') DEFAULT 'Active'");
@@ -265,14 +270,13 @@ app.get("/api/vehicles", async (req, res) => {
       nextServiceOdometer: row.next_service_odometer,
       currentOdometer: row.current_odometer,
       imageUrl: row.image_url,
-      chassisNo: row.chassis_no,
       engineNo: row.engine_no,
       registrationDate: row.registration_date,
-      insurancePolicyNo: row.insurance_policy_no,
       insuranceExpiry: row.insurance_expiry,
       revenueLicenseExpiry: row.revenue_license_expiry,
       revenueLicenseRegion: row.revenue_license_region,
       ownership: row.ownership,
+      isTransferred: !!row.is_transferred,
     }));
     res.json(mappedRows);
   } catch (error: any) {
@@ -354,7 +358,7 @@ app.post("/api/vehicles", async (req, res) => {
   const vehicle = req.body;
   try {
     const [result] = await dbPool.query(
-      "INSERT INTO \`vehicles\` (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, chassis_no, engine_no, registration_date, insurance_policy_no, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO \`vehicles\` (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, engine_no, registration_date, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership, is_transferred) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -363,14 +367,13 @@ app.post("/api/vehicles", async (req, res) => {
         vehicle.nextServiceOdometer || 0,
         vehicle.currentOdometer || 0,
         vehicle.imageUrl,
-        vehicle.chassisNo,
         vehicle.engineNo,
         vehicle.registrationDate,
-        vehicle.insurancePolicyNo,
         vehicle.insuranceExpiry,
         vehicle.revenueLicenseExpiry,
         vehicle.revenueLicenseRegion,
         vehicle.ownership,
+        vehicle.isTransferred ? 1 : 0,
       ]
     );
     res.status(201).json({ id: (result as any).insertId, ...vehicle });
@@ -393,7 +396,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
   const vehicle = req.body;
   try {
     await dbPool.query(
-      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, chassis_no = ?, engine_no = ?, registration_date = ?, insurance_policy_no = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ?, ownership = ? WHERE id = ?",
+      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, engine_no = ?, registration_date = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ?, ownership = ?, is_transferred = ? WHERE id = ?",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -402,14 +405,13 @@ app.put("/api/vehicles/:id", async (req, res) => {
         vehicle.nextServiceOdometer || 0,
         vehicle.currentOdometer || 0,
         vehicle.imageUrl,
-        vehicle.chassisNo,
         vehicle.engineNo,
         vehicle.registrationDate,
-        vehicle.insurancePolicyNo,
         vehicle.insuranceExpiry,
         vehicle.revenueLicenseExpiry,
         vehicle.revenueLicenseRegion,
         vehicle.ownership,
+        vehicle.isTransferred ? 1 : 0,
         vehicleId,
       ]
     );

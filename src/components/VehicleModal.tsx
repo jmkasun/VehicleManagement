@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Camera, Car, Hash, Calendar, Shield, MapPin, Gauge } from 'lucide-react';
+import { X, Camera, Car, Hash, Calendar, Shield, MapPin, Gauge, RefreshCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Vehicle, VehicleStatus } from '../types';
+import { cn } from '../lib/utils';
 
 interface VehicleModalProps {
   isOpen: boolean;
@@ -19,12 +20,11 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
     nextServiceDate: '',
     nextServiceOdometer: 0,
     currentOdometer: 0,
-    chassisNo: '',
-    insurancePolicyNo: '',
     insuranceExpiry: '',
     revenueLicenseExpiry: '',
     revenueLicenseRegion: 'Western',
     ownership: '',
+    isTransferred: false,
   });
 
   React.useEffect(() => {
@@ -39,12 +39,11 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
         nextServiceDate: '',
         nextServiceOdometer: 0,
         currentOdometer: 0,
-        chassisNo: '',
-        insurancePolicyNo: '',
         insuranceExpiry: '',
         revenueLicenseExpiry: '',
         revenueLicenseRegion: 'Western',
         ownership: '',
+        isTransferred: false,
       });
     }
   }, [vehicle, isOpen]);
@@ -158,7 +157,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Status</label>
                     <select 
@@ -171,16 +170,43 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Next Service Date</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
-                      <input 
-                        type="date"
-                        className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                        value={formData.nextServiceDate}
-                        onChange={e => setFormData({ ...formData, nextServiceDate: e.target.value })}
-                      />
-                    </div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Owner Details</label>
+                    <input 
+                      type="text"
+                      placeholder="e.g. Company Owned / Leased"
+                      className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
+                      value={formData.ownership}
+                      onChange={e => setFormData({ ...formData, ownership: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Tranfered</label>
+                    <button 
+                      type="button"
+                      onClick={() => setFormData({ ...formData, isTransferred: !formData.isTransferred })}
+                      className={cn(
+                        "w-full py-3 rounded-2xl text-sm font-black uppercase tracking-widest transition-all shadow-sm",
+                        formData.isTransferred 
+                          ? "bg-emerald-500 text-white shadow-emerald-500/20" 
+                          : "bg-error text-white shadow-error/20"
+                      )}
+                    >
+                      {formData.isTransferred ? 'Yes' : 'No'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Revenue License Region</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
+                    <input 
+                      type="text"
+                      placeholder="e.g. Western"
+                      className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
+                      value={formData.revenueLicenseRegion}
+                      onChange={e => setFormData({ ...formData, revenueLicenseRegion: e.target.value })}
+                    />
                   </div>
                 </div>
               </section>
@@ -192,7 +218,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                   <h3 className="text-xs font-black uppercase tracking-widest text-primary">Technical & Compliance</h3>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Current Odometer (KM)</label>
                     <div className="relative">
@@ -219,29 +245,15 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                       />
                     </div>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Chassis Number</label>
-                    <input 
-                      type="text"
-                      placeholder="Enter chassis number"
-                      className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.chassisNo}
-                      onChange={e => setFormData({ ...formData, chassisNo: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Insurance Policy #</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Next Service Date</label>
                     <div className="relative">
-                      <Shield className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
                       <input 
-                        type="text"
-                        placeholder="Enter policy number"
+                        type="date"
                         className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                        value={formData.insurancePolicyNo}
-                        onChange={e => setFormData({ ...formData, insurancePolicyNo: e.target.value })}
+                        value={formData.nextServiceDate}
+                        onChange={e => setFormData({ ...formData, nextServiceDate: e.target.value })}
                       />
                     </div>
                   </div>
@@ -266,31 +278,6 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                       onChange={e => setFormData({ ...formData, revenueLicenseExpiry: e.target.value })}
                     />
                   </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Revenue License Region</label>
-                  <div className="relative">
-                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
-                    <input 
-                      type="text"
-                      placeholder="e.g. Western"
-                      className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.revenueLicenseRegion}
-                      onChange={e => setFormData({ ...formData, revenueLicenseRegion: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Ownership</label>
-                  <input 
-                    type="text"
-                    placeholder="e.g. Company Owned / Leased"
-                    className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                    value={formData.ownership}
-                    onChange={e => setFormData({ ...formData, ownership: e.target.value })}
-                  />
                 </div>
               </section>
 
