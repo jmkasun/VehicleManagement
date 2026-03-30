@@ -14,6 +14,8 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // MySQL Connection Pool
 let pool: mysql.Pool | null = null;
 let lastInitError: string | null = null;
+let isInitializing = false;
+let isInitialized = false;
 
 function getPool() {
   if (!pool) {
@@ -29,6 +31,14 @@ function getPool() {
         rejectUnauthorized: false, // Required for Aiven/Cloud databases
       },
     };
+
+    console.log("Database config check:", {
+      host: !!config.host,
+      user: !!config.user,
+      password: !!config.password,
+      database: !!config.database,
+      port: config.port,
+    });
 
     const missing = [];
     if (!config.host) missing.push("MYSQL_HOST");
@@ -49,10 +59,15 @@ function getPool() {
 }
 
 async function initDb() {
+  if (isInitialized) return;
+  if (isInitializing) return;
+
+  isInitializing = true;
   console.log("Initializing database...");
   const dbPool = getPool();
   if (!dbPool) {
     console.error("Database initialization failed: Pool not created.");
+    isInitializing = false;
     return;
   }
 
@@ -229,11 +244,26 @@ async function initDb() {
 
     console.log("Database initialized successfully.");
     lastInitError = null;
+    isInitialized = true;
   } catch (error: any) {
     console.error("Error initializing database:", error);
     lastInitError = error.message;
+  } finally {
+    isInitializing = false;
   }
 }
+
+// Middleware to ensure DB is initialized
+app.use(async (req, res, next) => {
+  if (!isInitialized && !req.path.startsWith("/api/db-status")) {
+    try {
+      await initDb();
+    } catch (error) {
+      console.error("Middleware DB init error:", error);
+    }
+  }
+  next();
+});
 
 // API Routes
 app.get("/api/db-status", async (req, res) => {
@@ -708,10 +738,10 @@ app.post("/api/login", async (req, res) => {
 
 // Vite middleware for development
 async function setupVite() {
-  // Always ensure DB is initialized
-  await initDb();
-
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    // Always ensure DB is initialized in dev
+    await initDb();
+
     // Dynamic import vite to prevent Rollup native binary errors in production
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -723,6 +753,10 @@ async function setupVite() {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
+  } else if (process.env.VERCEL) {
+    // On Vercel, we don't listen, but we might want to trigger initDb
+    // However, the middleware will handle it more reliably per-request
+    console.log("Running in Vercel environment");
   }
 }
 
