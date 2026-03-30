@@ -16,7 +16,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
     name: '',
     licensePlate: '',
     status: 'Active',
-    imageUrl: `https://picsum.photos/seed/${Math.random()}/800/600`,
+    imageUrl: '',
     nextServiceDate: '',
     nextServiceOdometer: 0,
     currentOdometer: 0,
@@ -35,7 +35,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
         name: '',
         licensePlate: '',
         status: 'Active',
-        imageUrl: `https://picsum.photos/seed/${Math.random()}/800/600`,
+        imageUrl: '',
         nextServiceDate: '',
         nextServiceOdometer: 0,
         currentOdometer: 0,
@@ -306,13 +306,6 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                         >
                           <Camera className="w-4 h-4" />
                           Upload Image
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFormData({ ...formData, imageUrl: `https://picsum.photos/seed/${Math.random()}/800/600` })}
-                          className="px-4 py-2 bg-white/20 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white flex items-center gap-2 hover:bg-white/30"
-                        >
-                          Random
                         </button>
                       </div>
                     </>

@@ -12,6 +12,13 @@ interface VehicleListProps {
 }
 
 export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: VehicleListProps) {
+  const [filter, setFilter] = React.useState('All Vehicles');
+
+  const filteredVehicles = vehicles.filter(vehicle => {
+    if (filter === 'All Vehicles') return true;
+    return vehicle.status === filter;
+  });
+
   return (
     <div className="space-y-6 pb-8">
       <div className="py-2 flex justify-between items-start">
@@ -28,23 +35,24 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
       </div>
 
       <div className="flex gap-2 mt-6 overflow-x-auto pb-2 no-scrollbar">
-          {['All Vehicles', 'Active', 'Inactive'].map((filter, i) => (
+          {['All Vehicles', 'Active', 'Inactive'].map((f) => (
             <button 
-              key={filter}
+              key={f}
+              onClick={() => setFilter(f)}
               className={cn(
                 "px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all",
-                i === 0 
+                filter === f 
                   ? "bg-primary text-white shadow-lg shadow-primary/20" 
                   : "bg-white border border-outline-variant text-on-surface-variant hover:border-primary"
               )}
             >
-              {filter}
+              {f}
             </button>
           ))}
         </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {vehicles.map((vehicle) => (
+        {filteredVehicles.map((vehicle) => (
           <div 
             key={vehicle.id}
             onClick={() => onSelectVehicle(vehicle)}
