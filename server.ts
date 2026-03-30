@@ -19,18 +19,30 @@ let isInitialized = false;
 
 function getPool() {
   if (!pool) {
-    const config = {
+    const config: any = {
       host: process.env.MYSQL_HOST,
       user: process.env.MYSQL_USER,
       password: process.env.MYSQL_PASSWORD,
       database: process.env.MYSQL_DATABASE,
       port: parseInt(process.env.MYSQL_PORT || "3306"),
-      connectionLimit: 5, // Keep this low for free tier databases
-      connectTimeout: 10000, // 10 seconds timeout for remote connections
-      ssl: {
-        rejectUnauthorized: false, // Required for Aiven/Cloud databases
-      },
+      connectionLimit: 5,
+      connectTimeout: 10000,
     };
+
+    // SSL Configuration
+    // 1. If MYSQL_SSL is explicitly 'false', don't use SSL.
+    // 2. If MYSQL_SSL is 'true', use SSL.
+    // 3. If MYSQL_SSL is not set, use SSL for cloud providers (Aiven, AWS).
+    const useSsl = process.env.MYSQL_SSL === 'false' ? false : 
+                   (process.env.MYSQL_SSL === 'true' || 
+                    process.env.MYSQL_HOST?.includes('aivencloud.com') || 
+                    process.env.MYSQL_HOST?.includes('amazonaws.com'));
+
+    if (useSsl) {
+      config.ssl = {
+        rejectUnauthorized: false,
+      };
+    }
 
     console.log("Database config check:", {
       host: !!config.host,
@@ -38,6 +50,8 @@ function getPool() {
       password: !!config.password,
       database: !!config.database,
       port: config.port,
+      ssl: !!config.ssl,
+      sslEnv: process.env.MYSQL_SSL
     });
 
     const missing = [];
