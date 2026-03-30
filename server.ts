@@ -3,10 +3,7 @@ import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
-// Only load dotenv in local development
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config();
-}
+dotenv.config();
 
 const app = express();
 const PORT = 3000;
@@ -28,10 +25,6 @@ function getPool() {
       port: parseInt(process.env.MYSQL_PORT || "3306"),
       connectionLimit: 5, // Keep this low for free tier databases
       connectTimeout: 10000, // 10 seconds timeout for remote connections
-      ssl: {
-        // Required for most cloud MySQL providers when connecting from Vercel
-        rejectUnauthorized: false,
-      },
     };
 
     const missing = [];
@@ -262,14 +255,9 @@ app.get("/api/db-status", async (req, res) => {
 });
 
 app.get("/api/vehicles", async (req, res) => {
-  let dbPool;
-  try {
-    dbPool = getPool();
-    if (!dbPool) {
-      return res.status(500).json({ error: "Database configuration missing" });
-    }
-  } catch (e) {
-    return res.status(500).json({ error: "Pool initialization failed" });
+  const dbPool = getPool();
+  if (!dbPool) {
+    return res.status(500).json({ error: "Database configuration missing" });
   }
 
   try {
@@ -716,8 +704,7 @@ async function setupVite() {
   // Always ensure DB is initialized
   await initDb();
 
-  // Skip Vite setup if on Cloudflare or in production
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL && !process.env.CF_PAGES) {
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
     // Dynamic import vite to prevent Rollup native binary errors in production
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -729,8 +716,6 @@ async function setupVite() {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
-  } else {
-    console.log("Production/Cloudflare mode: Skipping Vite development server.");
   }
 }
 
