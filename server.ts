@@ -1,7 +1,9 @@
+console.log("Server.ts: Starting execution");
 import express from "express";
 import path from "path";
-import mysql from "mysql2/promise";
 import dotenv from "dotenv";
+
+console.log("Server.ts: Base imports completed");
 
 try {
   dotenv.config();
@@ -16,11 +18,9 @@ process.on('unhandledRejection', (reason, promise) => {
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-// Simple ping route for Vercel health checks
+// Simple ping route for Vercel health checks - MOVED TO TOP
 app.get("/api/ping", (req, res) => {
+  console.log("Ping request received");
   res.json({ 
     status: "ok", 
     timestamp: new Date().toISOString(),
@@ -29,14 +29,18 @@ app.get("/api/ping", (req, res) => {
   });
 });
 
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
 // MySQL Connection Pool
 let pool: mysql.Pool | null = null;
 let lastInitError: string | null = null;
 let isInitializing = false;
 let isInitialized = false;
 
-function getPool() {
+async function getPool() {
   if (!pool) {
+    const { default: mysql } = await import("mysql2/promise");
     const config: any = {
       host: process.env.MYSQL_HOST,
       user: process.env.MYSQL_USER,
@@ -96,7 +100,7 @@ async function initDb() {
 
   isInitializing = true;
   console.log("Initializing database...");
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     console.error("Database initialization failed: Pool not created.");
     isInitializing = false;
@@ -291,7 +295,7 @@ app.use(async (req, res, next) => {
 
 // API Routes
 app.get("/api/db-status", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     return res.status(500).json({ status: "error", message: "Database configuration missing" });
   }
@@ -312,7 +316,7 @@ app.get("/api/db-status", async (req, res) => {
 });
 
 app.get("/api/vehicles", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     return res.status(500).json({ error: "Database configuration missing" });
   }
@@ -347,7 +351,7 @@ app.get("/api/vehicles", async (req, res) => {
 });
 
 app.get("/api/service-history/:vehicleId", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     return res.status(500).json({ error: "Database configuration missing" });
   }
@@ -376,7 +380,7 @@ app.get("/api/service-history/:vehicleId", async (req, res) => {
 });
 
 app.post("/api/service-history", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     return res.status(500).json({ error: "Database configuration missing" });
   }
@@ -408,7 +412,7 @@ app.post("/api/service-history", async (req, res) => {
 });
 
 app.post("/api/vehicles", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     return res.status(500).json({ error: "Database configuration missing" });
   }
@@ -445,7 +449,7 @@ app.post("/api/vehicles", async (req, res) => {
 });
 
 app.put("/api/vehicles/:id", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) {
     return res.status(500).json({ error: "Database configuration missing" });
   }
@@ -485,7 +489,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
 
 // System Updates Routes
 app.get("/api/system-updates", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query("SELECT * FROM \`system_updates\` ORDER BY created_at DESC LIMIT 5");
@@ -502,7 +506,7 @@ app.get("/api/system-updates", async (req, res) => {
 });
 
 app.post("/api/system-updates", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { message } = req.body;
   try {
@@ -519,7 +523,7 @@ app.post("/api/system-updates", async (req, res) => {
 
 // Upcoming Services Routes
 app.get("/api/upcoming-services", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query(
@@ -545,7 +549,7 @@ app.get("/api/upcoming-services", async (req, res) => {
 });
 
 app.get("/api/upcoming-services/:vehicleId", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query(
@@ -569,7 +573,7 @@ app.get("/api/upcoming-services/:vehicleId", async (req, res) => {
 });
 
 app.post("/api/upcoming-services", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const service = req.body;
   try {
@@ -585,7 +589,7 @@ app.post("/api/upcoming-services", async (req, res) => {
 });
 
 app.delete("/api/upcoming-services/:id", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     await dbPool.query("DELETE FROM \`upcoming_services\` WHERE id = ?", [req.params.id]);
@@ -598,7 +602,7 @@ app.delete("/api/upcoming-services/:id", async (req, res) => {
 
 // Vehicle Images Routes
 app.get("/api/vehicles/:id/images", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query(
@@ -620,7 +624,7 @@ app.get("/api/vehicles/:id/images", async (req, res) => {
 });
 
 app.post("/api/vehicles/:id/images", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { topic, description, imageUrl } = req.body;
   const vehicleId = req.params.id;
@@ -644,7 +648,7 @@ app.post("/api/vehicles/:id/images", async (req, res) => {
 });
 
 app.delete("/api/vehicle-images/:id", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     await dbPool.query("DELETE FROM \`vehicle_images\` WHERE id = ?", [req.params.id]);
@@ -657,7 +661,7 @@ app.delete("/api/vehicle-images/:id", async (req, res) => {
 
 // Auth Routes
 app.get("/api/users", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query("SELECT id, email, role, profile_image_url, created_at FROM \`users\` ORDER BY created_at DESC");
@@ -675,7 +679,7 @@ app.get("/api/users", async (req, res) => {
 });
 
 app.post("/api/users", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { email, password, role, profileImageUrl } = req.body;
   try {
@@ -695,7 +699,7 @@ app.post("/api/users", async (req, res) => {
 });
 
 app.put("/api/users/:id", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { email, password, role, profileImageUrl } = req.body;
   try {
@@ -716,7 +720,7 @@ app.put("/api/users/:id", async (req, res) => {
 });
 
 app.delete("/api/users/:id", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     await dbPool.query("DELETE FROM \`users\` WHERE id = ?", [req.params.id]);
@@ -728,7 +732,7 @@ app.delete("/api/users/:id", async (req, res) => {
 });
 
 app.post("/api/login", async (req, res) => {
-  const dbPool = getPool();
+  const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   
   const { email, password } = req.body;
@@ -784,10 +788,12 @@ async function setupVite() {
   }
 }
 
-try {
-  setupVite();
-} catch (e) {
-  console.error("Error in setupVite:", e);
+if (!process.env.VERCEL) {
+  try {
+    setupVite();
+  } catch (e) {
+    console.error("Error in setupVite:", e);
+  }
 }
 
 export default app; // Export at the end to ensure all routes are registered
