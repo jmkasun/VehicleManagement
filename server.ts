@@ -7,7 +7,6 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
-export default app; // Required for Vercel
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -260,9 +259,14 @@ app.get("/api/db-status", async (req, res) => {
 });
 
 app.get("/api/vehicles", async (req, res) => {
-  const dbPool = getPool();
-  if (!dbPool) {
-    return res.status(500).json({ error: "Database configuration missing" });
+  let dbPool;
+  try {
+    dbPool = getPool();
+    if (!dbPool) {
+      return res.status(500).json({ error: "Database configuration missing" });
+    }
+  } catch (e) {
+    return res.status(500).json({ error: "Pool initialization failed" });
   }
 
   try {
@@ -709,7 +713,8 @@ async function setupVite() {
   // Always ensure DB is initialized
   await initDb();
 
-  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  // Skip Vite setup if on Cloudflare or in production
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL && !process.env.CF_PAGES) {
     // Dynamic import vite to prevent Rollup native binary errors in production
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -721,7 +726,11 @@ async function setupVite() {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
+  } else {
+    console.log("Production/Cloudflare mode: Skipping Vite development server.");
   }
 }
 
 setupVite();
+
+export default app; // Export at the end to ensure all routes are registered
