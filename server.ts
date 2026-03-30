@@ -25,6 +25,9 @@ function getPool() {
       port: parseInt(process.env.MYSQL_PORT || "3306"),
       connectionLimit: 5, // Keep this low for free tier databases
       connectTimeout: 10000, // 10 seconds timeout for remote connections
+      ssl: {
+        rejectUnauthorized: false, // Required for Aiven/Cloud databases
+      },
     };
 
     const missing = [];
@@ -693,9 +696,13 @@ app.post("/api/login", async (req, res) => {
     } else {
       res.status(401).json({ error: "Invalid email or password" });
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Login error:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ 
+      error: "Internal server error", 
+      message: error.message,
+      details: process.env.NODE_ENV !== 'production' ? error : undefined
+    });
   }
 });
 
