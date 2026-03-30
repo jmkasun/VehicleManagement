@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
@@ -8,6 +7,7 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+export default app; // Required for Vercel
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -24,6 +24,12 @@ function getPool() {
       password: process.env.MYSQL_PASSWORD,
       database: process.env.MYSQL_DATABASE,
       port: parseInt(process.env.MYSQL_PORT || "3306"),
+      connectionLimit: 5, // Keep this low for free tier databases
+      connectTimeout: 10000, // 10 seconds timeout for remote connections
+      ssl: {
+        // Required for most cloud MySQL providers when connecting from Vercel
+        rejectUnauthorized: false,
+      },
     };
 
     const missing = [];
@@ -700,24 +706,22 @@ app.post("/api/login", async (req, res) => {
 
 // Vite middleware for development
 async function setupVite() {
+  // Always ensure DB is initialized
   await initDb();
-  if (process.env.NODE_ENV !== "production") {
+
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    // Dynamic import vite to prevent Rollup native binary errors in production
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 setupVite();
