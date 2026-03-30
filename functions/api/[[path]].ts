@@ -10,11 +10,12 @@ export const onRequest: PagesFunction<{
   const { request, env } = context;
   const url = new URL(request.url);
 
-  // Fix: Cloudflare Workers need environment variables mapped to process.env 
-  // for libraries like mysql2 to find them if they use default getters,
-  // but it's safer to pass them directly.
-  
   if (url.pathname === "/api/login" && request.method === "POST") {
+    // Ensure we have the required environment variables
+    if (!env.MYSQL_HOST) {
+      return new Response(JSON.stringify({ error: "Server configuration error: Database host missing" }), { status: 500 });
+    }
+
     try {
       const { email, password } = await request.json() as any;
 
@@ -55,4 +56,3 @@ export const onRequest: PagesFunction<{
 
   return new Response("API Route Not Found", { status: 404 });
 };
-
