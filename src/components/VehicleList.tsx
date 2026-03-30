@@ -23,8 +23,11 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
     <div className="space-y-6 pb-8">
       <div className="py-2 flex justify-between items-start">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-on-surface">Vehicles</h2>
-          <p className="text-on-surface-variant text-sm mt-1 font-medium">Manage and track your registered fleet assets</p>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-1.5 h-6 bg-primary rounded-full" />
+            <h2 className="text-3xl font-black tracking-tight text-on-surface">Fleet Assets</h2>
+          </div>
+          <p className="text-on-surface-variant text-sm font-medium">Manage and track your registered vehicle inventory</p>
         </div>
         <button 
           onClick={onAddVehicle}

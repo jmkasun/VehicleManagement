@@ -40,7 +40,7 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           <div className="w-20 h-20 bg-primary rounded-[2rem] flex items-center justify-center text-white mx-auto mb-6 shadow-2xl shadow-primary/20">
             <Car className="w-10 h-10" />
           </div>
-          <h1 className="text-4xl font-black tracking-tighter text-on-surface mb-2">Vehicle Manager</h1>
+          <h1 className="text-4xl font-black tracking-tighter text-on-surface mb-2">Fleet<span className="text-primary">Elite</span></h1>
           <p className="text-on-surface-variant font-medium">Sign in to manage your fleet records</p>
         </div>
 
