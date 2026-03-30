@@ -1,9 +1,9 @@
 import React from 'react';
-import { MoreVertical, Calendar, AlertTriangle, Info, PlusCircle } from 'lucide-react';
-import { MOCK_VEHICLES } from '../constants';
+import { MoreVertical, Calendar, AlertTriangle, Info, PlusCircle, Trash2, Edit3, Search, Filter, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 import { Vehicle } from '../types';
+import { ConfirmationModal } from './ConfirmationModal';
 
 interface VehicleListProps {
   vehicles: Vehicle[];
@@ -79,9 +79,11 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
                 <div>
                   <div className="flex justify-between items-start">
                     <h3 className="font-black text-on-surface text-lg leading-tight">{vehicle.name}</h3>
-                    <button className="text-outline-variant hover:text-primary transition-colors">
-                      <MoreVertical className="w-5 h-5" />
-                    </button>
+                    <div className="flex gap-2">
+                      <button className="text-outline-variant hover:text-primary transition-colors">
+                        <MoreVertical className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="bg-surface-container-low inline-block px-2 py-1 rounded-lg border border-outline-variant/20 mt-2">
                     <span className="text-[10px] font-mono font-black text-primary uppercase tracking-tighter">{vehicle.licensePlate}</span>

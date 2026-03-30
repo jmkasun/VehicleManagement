@@ -180,6 +180,16 @@ export default function App() {
     }
   };
 
+  const handleDeleteVehicle = async (id: string) => {
+    try {
+      await apiService.deleteVehicle(id);
+      await fetchVehicles();
+    } catch (err: any) {
+      console.error('Error deleting vehicle:', err);
+      alert(`Failed to delete vehicle: ${err.message}`);
+    }
+  };
+
   const handleAddSystemUpdate = async (message: string) => {
     try {
       await apiService.addSystemUpdate(message);
@@ -214,6 +224,10 @@ export default function App() {
           onEdit={() => {
             setEditingVehicle(selectedVehicle);
             setIsModalOpen(true);
+          }}
+          onDelete={(id) => {
+            handleDeleteVehicle(id);
+            setSelectedVehicle(null);
           }}
           onViewHistory={() => {
             setInitialHistoryVehicleId(selectedVehicle.id);
@@ -271,10 +285,14 @@ export default function App() {
           onSelectVehicle={handleSelectVehicle}
         />;
       case 'vehicles':
-        return <VehicleList vehicles={vehicles} onSelectVehicle={setSelectedVehicle} onAddVehicle={() => {
-          setEditingVehicle(null);
-          setIsModalOpen(true);
-        }} />;
+        return <VehicleList 
+          vehicles={vehicles} 
+          onSelectVehicle={setSelectedVehicle} 
+          onAddVehicle={() => {
+            setEditingVehicle(null);
+            setIsModalOpen(true);
+          }} 
+        />;
       case 'history':
         return <ServiceHistory 
           vehicles={vehicles} 

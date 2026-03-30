@@ -130,7 +130,8 @@ async function initDb() {
         revenue_license_expiry VARCHAR(50),
         revenue_license_region VARCHAR(100),
         ownership VARCHAR(255),
-        is_transferred BOOLEAN DEFAULT FALSE
+        is_transferred BOOLEAN DEFAULT FALSE,
+        is_deleted BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -146,7 +147,8 @@ async function initDb() {
         type ENUM('Full Service', 'Tire Rotation', 'Oil Change', 'Brake Overhaul', 'Battery Replacement'),
         cost DECIMAL(10, 2),
         parts LONGTEXT,
-        labor_cost DECIMAL(10, 2)
+        labor_cost DECIMAL(10, 2),
+        is_deleted BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -156,7 +158,8 @@ async function initDb() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         message TEXT NOT NULL,
         is_new BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -171,7 +174,8 @@ async function initDb() {
         due_odometer INT,
         priority ENUM('Low', 'Medium', 'High') DEFAULT 'Medium',
         status ENUM('Pending', 'Completed') DEFAULT 'Pending',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -183,7 +187,8 @@ async function initDb() {
         topic VARCHAR(255) NOT NULL,
         description TEXT,
         image_url LONGTEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -195,7 +200,8 @@ async function initDb() {
         password VARCHAR(255) NOT NULL,
         role ENUM('admin', 'user') DEFAULT 'user',
         profile_image_url LONGTEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_deleted BOOLEAN DEFAULT FALSE
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
 
@@ -240,8 +246,42 @@ async function initDb() {
       await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_transferred BOOLEAN DEFAULT FALSE AFTER ownership");
     }
 
+    if (!columnNames.includes('is_deleted')) {
+      console.log("Adding 'is_deleted' column to 'vehicles' table...");
+      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
+    }
+
+    const [serviceHistoryColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`service_history\`");
+    if (!serviceHistoryColumns.map((c: any) => c.Field).includes('is_deleted')) {
+      console.log("Adding 'is_deleted' column to 'service_history' table...");
+      await dbPool.query("ALTER TABLE \`service_history\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
+    }
+
+    const [systemUpdatesColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`system_updates\`");
+    if (!systemUpdatesColumns.map((c: any) => c.Field).includes('is_deleted')) {
+      console.log("Adding 'is_deleted' column to 'system_updates' table...");
+      await dbPool.query("ALTER TABLE \`system_updates\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
+    }
+
+    const [upcomingServicesColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`upcoming_services\`");
+    if (!upcomingServicesColumns.map((c: any) => c.Field).includes('is_deleted')) {
+      console.log("Adding 'is_deleted' column to 'upcoming_services' table...");
+      await dbPool.query("ALTER TABLE \`upcoming_services\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
+    }
+
+    const [vehicleImagesColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicle_images\`");
+    if (!vehicleImagesColumns.map((c: any) => c.Field).includes('is_deleted')) {
+      console.log("Adding 'is_deleted' column to 'vehicle_images' table...");
+      await dbPool.query("ALTER TABLE \`vehicle_images\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
+    }
+
     const [userColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`users\`");
     const userColumnNames = userColumns.map((c: any) => c.Field);
+    if (!userColumnNames.includes('is_deleted')) {
+      console.log("Adding 'is_deleted' column to 'users' table...");
+      await dbPool.query("ALTER TABLE \`users\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
+    }
+
     if (!userColumnNames.includes('profile_image_url')) {
       console.log("Adding 'profile_image_url' column to 'users' table...");
       await dbPool.query("ALTER TABLE \`users\` ADD COLUMN profile_image_url LONGTEXT AFTER role");
@@ -323,7 +363,7 @@ app.get("/api/vehicles", async (req, res) => {
   }
 
   try {
-    const [rows]: any = await dbPool.query("SELECT * FROM \`vehicles\`");
+    const [rows]: any = await dbPool.query("SELECT * FROM \`vehicles\` WHERE is_deleted = FALSE");
     const mappedRows = rows.map((row: any) => ({
       id: row.id.toString(),
       name: row.name,
@@ -359,7 +399,7 @@ app.get("/api/service-history/:vehicleId", async (req, res) => {
 
   try {
     const [rows] = await dbPool.query(
-      "SELECT * FROM \`service_history\` WHERE vehicle_id = ?",
+      "SELECT * FROM \`service_history\` WHERE vehicle_id = ? AND is_deleted = FALSE",
       [req.params.vehicleId]
     );
     
@@ -388,6 +428,12 @@ app.post("/api/service-history", async (req, res) => {
 
   const record = req.body;
   try {
+    // Check if vehicle exists and is not deleted
+    const [vehicles]: any = await dbPool.query("SELECT id FROM \`vehicles\` WHERE id = ? AND is_deleted = FALSE", [record.vehicleId]);
+    if (vehicles.length === 0) {
+      return res.status(404).json({ error: "Vehicle not found or deleted" });
+    }
+
     const [result] = await dbPool.query(
       "INSERT INTO \`service_history\` (vehicle_id, date, odometer, title, description, type, cost, parts, labor_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
@@ -459,7 +505,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
   const vehicle = req.body;
   try {
     await dbPool.query(
-      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, engine_no = ?, registration_date = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ?, ownership = ?, is_transferred = ? WHERE id = ?",
+      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, engine_no = ?, registration_date = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ?, ownership = ?, is_transferred = ? WHERE id = ? AND is_deleted = FALSE",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -488,12 +534,38 @@ app.put("/api/vehicles/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/vehicles/:id", async (req, res) => {
+  const dbPool = await getPool();
+  if (!dbPool) {
+    return res.status(500).json({ error: "Database configuration missing" });
+  }
+
+  const vehicleId = req.params.id;
+  try {
+    // Soft delete associated data first
+    await dbPool.query("UPDATE \`upcoming_services\` SET is_deleted = TRUE WHERE vehicle_id = ?", [vehicleId]);
+    await dbPool.query("UPDATE \`vehicle_images\` SET is_deleted = TRUE WHERE vehicle_id = ?", [vehicleId]);
+    await dbPool.query("UPDATE \`service_history\` SET is_deleted = TRUE WHERE vehicle_id = ?", [vehicleId]);
+    
+    // Soft delete the vehicle
+    await dbPool.query("UPDATE \`vehicles\` SET is_deleted = TRUE WHERE id = ?", [vehicleId]);
+    
+    res.status(204).send();
+  } catch (error: any) {
+    console.error("Error deleting vehicle:", error);
+    res.status(500).json({ 
+      error: "Failed to delete vehicle",
+      details: process.env.NODE_ENV !== "production" ? error.message : undefined
+    });
+  }
+});
+
 // System Updates Routes
 app.get("/api/system-updates", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query("SELECT * FROM \`system_updates\` ORDER BY created_at DESC LIMIT 5");
+    const [rows]: any = await dbPool.query("SELECT * FROM \`system_updates\` WHERE is_deleted = FALSE ORDER BY created_at DESC LIMIT 5");
     res.json(rows.map((row: any) => ({
       id: row.id,
       message: row.message,
@@ -528,7 +600,7 @@ app.get("/api/upcoming-services", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query(
-      "SELECT us.*, v.name as vehicleName, v.license_plate as licensePlate, v.image_url as vehicleImageUrl FROM \`upcoming_services\` us JOIN \`vehicles\` v ON us.vehicle_id = v.id WHERE us.status = 'Pending' ORDER BY us.due_date ASC"
+      "SELECT us.*, v.name as vehicleName, v.license_plate as licensePlate, v.image_url as vehicleImageUrl FROM \`upcoming_services\` us JOIN \`vehicles\` v ON us.vehicle_id = v.id WHERE us.status = 'Pending' AND us.is_deleted = FALSE AND v.is_deleted = FALSE ORDER BY us.due_date ASC"
     );
     res.json(rows.map((row: any) => ({
       id: row.id,
@@ -554,7 +626,7 @@ app.get("/api/upcoming-services/:vehicleId", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query(
-      "SELECT * FROM \`upcoming_services\` WHERE vehicle_id = ? AND status = 'Pending' ORDER BY due_date ASC",
+      "SELECT * FROM \`upcoming_services\` WHERE vehicle_id = ? AND status = 'Pending' AND is_deleted = FALSE ORDER BY due_date ASC",
       [req.params.vehicleId]
     );
     res.json(rows.map((row: any) => ({
@@ -578,6 +650,12 @@ app.post("/api/upcoming-services", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const service = req.body;
   try {
+    // Check if vehicle exists and is not deleted
+    const [vehicles]: any = await dbPool.query("SELECT id FROM \`vehicles\` WHERE id = ? AND is_deleted = FALSE", [service.vehicleId]);
+    if (vehicles.length === 0) {
+      return res.status(404).json({ error: "Vehicle not found or deleted" });
+    }
+
     const [result]: any = await dbPool.query(
       "INSERT INTO \`upcoming_services\` (vehicle_id, title, description, due_date, due_odometer, priority) VALUES (?, ?, ?, ?, ?, ?)",
       [service.vehicleId, service.title, service.description, service.dueDate, service.dueOdometer, service.priority || 'Medium']
@@ -593,10 +671,26 @@ app.delete("/api/upcoming-services/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("DELETE FROM \`upcoming_services\` WHERE id = ?", [req.params.id]);
+    await dbPool.query("UPDATE \`upcoming_services\` SET is_deleted = TRUE WHERE id = ?", [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting upcoming service:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/api/upcoming-services/:id", async (req, res) => {
+  const dbPool = await getPool();
+  if (!dbPool) return res.status(503).json({ error: "Database not configured" });
+  const service = req.body;
+  try {
+    await dbPool.query(
+      "UPDATE \`upcoming_services\` SET title = ?, description = ?, due_date = ?, due_odometer = ?, priority = ?, status = ? WHERE id = ? AND is_deleted = FALSE",
+      [service.title, service.description, service.dueDate, service.dueOdometer, service.priority, service.status, req.params.id]
+    );
+    res.json({ id: req.params.id, ...service });
+  } catch (error) {
+    console.error("Error updating upcoming service:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -607,7 +701,7 @@ app.get("/api/vehicles/:id/images", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const [rows]: any = await dbPool.query(
-      "SELECT * FROM \`vehicle_images\` WHERE vehicle_id = ? ORDER BY created_at DESC",
+      "SELECT * FROM \`vehicle_images\` WHERE vehicle_id = ? AND is_deleted = FALSE ORDER BY created_at DESC",
       [req.params.id]
     );
     res.json(rows.map((row: any) => ({
@@ -630,6 +724,12 @@ app.post("/api/vehicles/:id/images", async (req, res) => {
   const { topic, description, imageUrl } = req.body;
   const vehicleId = req.params.id;
   try {
+    // Check if vehicle exists and is not deleted
+    const [vehicles]: any = await dbPool.query("SELECT id FROM \`vehicles\` WHERE id = ? AND is_deleted = FALSE", [vehicleId]);
+    if (vehicles.length === 0) {
+      return res.status(404).json({ error: "Vehicle not found or deleted" });
+    }
+
     const [result]: any = await dbPool.query(
       "INSERT INTO \`vehicle_images\` (vehicle_id, topic, description, image_url) VALUES (?, ?, ?, ?)",
       [vehicleId, topic, description, imageUrl]
@@ -652,10 +752,26 @@ app.delete("/api/vehicle-images/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("DELETE FROM \`vehicle_images\` WHERE id = ?", [req.params.id]);
+    await dbPool.query("UPDATE \`vehicle_images\` SET is_deleted = TRUE WHERE id = ?", [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting vehicle image:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/api/vehicle-images/:id", async (req, res) => {
+  const dbPool = await getPool();
+  if (!dbPool) return res.status(503).json({ error: "Database not configured" });
+  const { topic, description, imageUrl } = req.body;
+  try {
+    await dbPool.query(
+      "UPDATE \`vehicle_images\` SET topic = ?, description = ?, image_url = ? WHERE id = ? AND is_deleted = FALSE",
+      [topic, description, imageUrl, req.params.id]
+    );
+    res.json({ id: req.params.id, topic, description, imageUrl });
+  } catch (error) {
+    console.error("Error updating vehicle image:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -665,7 +781,7 @@ app.get("/api/users", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query("SELECT id, email, role, profile_image_url, created_at FROM \`users\` ORDER BY created_at DESC");
+    const [rows]: any = await dbPool.query("SELECT id, email, role, profile_image_url, created_at FROM \`users\` WHERE is_deleted = FALSE ORDER BY created_at DESC");
     res.json(rows.map((row: any) => ({
       id: row.id.toString(),
       email: row.email,
@@ -704,11 +820,11 @@ app.put("/api/users/:id", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { email, password, role, profileImageUrl } = req.body;
   try {
-    let query = "UPDATE \`users\` SET email = ?, role = ?, profile_image_url = ? WHERE id = ?";
+    let query = "UPDATE \`users\` SET email = ?, role = ?, profile_image_url = ? WHERE id = ? AND is_deleted = FALSE";
     let params = [email, role, profileImageUrl, req.params.id];
     
     if (password) {
-      query = "UPDATE \`users\` SET email = ?, password = ?, role = ?, profile_image_url = ? WHERE id = ?";
+      query = "UPDATE \`users\` SET email = ?, password = ?, role = ?, profile_image_url = ? WHERE id = ? AND is_deleted = FALSE";
       params = [email, password, role, profileImageUrl, req.params.id];
     }
     
@@ -724,7 +840,7 @@ app.delete("/api/users/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("DELETE FROM \`users\` WHERE id = ?", [req.params.id]);
+    await dbPool.query("UPDATE \`users\` SET is_deleted = TRUE WHERE id = ?", [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -740,7 +856,7 @@ app.post("/api/login", async (req, res) => {
   
   try {
     const [rows]: any = await dbPool.query(
-      "SELECT * FROM \`users\` WHERE email = ? AND password = ?",
+      "SELECT * FROM \`users\` WHERE email = ? AND password = ? AND is_deleted = FALSE",
       [email, password]
     );
     
