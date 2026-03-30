@@ -19,7 +19,7 @@ export function TopAppBar({ user, onLogout, onProfileClick }: TopAppBarProps) {
     <header className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm flex items-center justify-between px-6 h-16">
       <div className="flex items-center gap-2">
         <Car className="w-6 h-6 text-primary" fill="currentColor" />
-        <h1 className="text-xl font-extrabold tracking-tight text-primary italic">V-Manage</h1>
+        <h1 className="text-xl font-extrabold tracking-tight text-primary italic">Vehicle Management</h1>
       </div>
       <div className="flex items-center gap-4">
         <div className="hidden md:flex flex-col items-end mr-2">

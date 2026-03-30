@@ -106,15 +106,6 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
               )}
             </button>
           </form>
-
-          <div className="mt-8 pt-8 border-t border-outline-variant/10 text-center">
-            <p className="text-xs text-on-surface-variant font-medium">
-              Admin Account: <span className="font-bold text-on-surface">kasun.jm@gmail.com</span>
-            </p>
-            <p className="text-[10px] text-on-surface-variant/60 font-medium mt-1 uppercase tracking-widest">
-              Password: admin@123
-            </p>
-          </div>
         </div>
       </motion.div>
     </div>

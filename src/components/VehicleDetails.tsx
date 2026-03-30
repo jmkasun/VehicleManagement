@@ -546,12 +546,12 @@ Generated on: ${new Date().toLocaleString()}
                   <input 
                     required
                     placeholder="Task Title (e.g. Brake Pad Replacement)"
-                    value={newService.title}
+                    value={newService.title ?? ''}
                     onChange={e => setNewService({...newService, title: e.target.value})}
                     className="bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                   />
                   <select 
-                    value={newService.priority}
+                    value={newService.priority ?? 'Medium'}
                     onChange={e => setNewService({...newService, priority: e.target.value as any})}
                     className="bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                   >
@@ -562,7 +562,7 @@ Generated on: ${new Date().toLocaleString()}
                 </div>
                 <textarea 
                   placeholder="Task Description"
-                  value={newService.description}
+                  value={newService.description ?? ''}
                   onChange={e => setNewService({...newService, description: e.target.value})}
                   className="w-full bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all h-24 resize-none"
                 />
@@ -571,7 +571,7 @@ Generated on: ${new Date().toLocaleString()}
                     <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
                     <input 
                       type="date"
-                      value={newService.dueDate}
+                      value={newService.dueDate ?? ''}
                       onChange={e => setNewService({...newService, dueDate: e.target.value})}
                       className="w-full bg-white border-none rounded-xl py-3 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -581,7 +581,7 @@ Generated on: ${new Date().toLocaleString()}
                     <input 
                       type="number"
                       placeholder="Due Odometer (KM)"
-                      value={newService.dueOdometer || ''}
+                      value={newService.dueOdometer ?? ''}
                       onChange={e => setNewService({...newService, dueOdometer: parseInt(e.target.value)})}
                       className="w-full bg-white border-none rounded-xl py-3 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -729,13 +729,13 @@ Generated on: ${new Date().toLocaleString()}
                     <input 
                       required
                       placeholder="Topic (e.g. Service Book Page 1)"
-                      value={newImage.topic}
+                      value={newImage.topic ?? ''}
                       onChange={e => setNewImage({...newImage, topic: e.target.value})}
                       className="w-full bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                     <textarea 
                       placeholder="Description"
-                      value={newImage.description}
+                      value={newImage.description ?? ''}
                       onChange={e => setNewImage({...newImage, description: e.target.value})}
                       className="w-full bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all h-24 resize-none"
                     />

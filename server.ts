@@ -3,6 +3,8 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 
+import mysql from "mysql2/promise";
+
 console.log("Server.ts: Base imports completed");
 
 try {
@@ -40,7 +42,6 @@ let isInitialized = false;
 
 async function getPool() {
   if (!pool) {
-    const { default: mysql } = await import("mysql2/promise");
     const config: any = {
       host: process.env.MYSQL_HOST,
       user: process.env.MYSQL_USER,
