@@ -3,7 +3,10 @@ import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
-dotenv.config();
+// Only load dotenv in local development
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 
 const app = express();
 const PORT = 3000;
