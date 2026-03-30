@@ -1,31 +1,57 @@
-/**
- * Cloudflare Pages Functions: API Catch-all
- * 
- * This file resolves the '405 Method Not Allowed' error by telling Cloudflare 
- * that all routes under /api/* are dynamic functions, not static files.
- */
+import mysql from "mysql2/promise";
 
-export const onRequest: PagesFunction = async (context) => {
+export const onRequest: PagesFunction<{
+  MYSQL_HOST: string;
+  MYSQL_USER: string;
+  MYSQL_PASSWORD: string;
+  MYSQL_DATABASE: string;
+  MYSQL_PORT: string;
+}> = async (context) => {
   const { request, env } = context;
+  const url = new URL(request.url);
 
-  // Map Cloudflare environment variables to process.env for your Express logic
-  Object.assign(process.env, env);
-
-  // Note: Express is built for Node.js. Cloudflare Workers (Pages Functions)
-  // use a 'fetch' based API. To run your full Express app here, 
-  // you should use a compatibility adapter like 'serverless-http' 
-  // or migrate the routes to 'Hono'.
+  // Fix: Cloudflare Workers need environment variables mapped to process.env 
+  // for libraries like mysql2 to find them if they use default getters,
+  // but it's safer to pass them directly.
   
-  // As a temporary fix to verify routing works:
-  if (request.method === 'POST') {
-    return new Response(JSON.stringify({ 
-      message: "API Function reached successfully.",
-      note: "You now need to bridge this Function to your Express logic in server.ts using an adapter."
-    }), { 
-      status: 200, 
-      headers: { "Content-Type": "application/json" } 
-    });
+  if (url.pathname === "/api/login" && request.method === "POST") {
+    try {
+      const { email, password } = await request.json() as any;
+
+      const connection = await mysql.createConnection({
+        host: env.MYSQL_HOST,
+        user: env.MYSQL_USER,
+        password: env.MYSQL_PASSWORD,
+        database: env.MYSQL_DATABASE,
+        port: parseInt(env.MYSQL_PORT || "3306"),
+        ssl: { rejectUnauthorized: false },
+      });
+
+      const [rows]: any = await connection.execute(
+        "SELECT id, email, role, profile_image_url FROM `users` WHERE email = ? AND password = ?",
+        [email, password]
+      );
+
+      await connection.end();
+
+      if (rows.length > 0) {
+        return new Response(JSON.stringify(rows[0]), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      } else {
+        return new Response(JSON.stringify({ error: "Invalid credentials" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    } catch (error: any) {
+      return new Response(JSON.stringify({ error: error.message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
   }
 
-  return new Response("API Bridge Active", { status: 200 });
+  return new Response("API Route Not Found", { status: 404 });
 };
