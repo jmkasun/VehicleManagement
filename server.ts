@@ -171,7 +171,7 @@ async function initDb() {
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
         role ENUM('admin', 'user') DEFAULT 'user',
-        profile_image_url TEXT,
+        profile_image_url LONGTEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
@@ -186,75 +186,49 @@ async function initDb() {
       );
     }
 
-    // Ensure new columns exist (Migrations)
+    // Ensure new columns exist (Migrations) - Optimized to run only if needed
     console.log("Checking for missing columns...");
-    try {
-      const [existingColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'next_service_odometer'");
-      if (existingColumns.length === 0) {
-        console.log("Adding 'next_service_odometer' column...");
-        await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN next_service_odometer INT DEFAULT 0 AFTER next_service_date");
-      }
-      
-      const [existingColumns2]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'current_odometer'");
-      if (existingColumns2.length === 0) {
-        console.log("Adding 'current_odometer' column...");
-        await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN current_odometer INT DEFAULT 0 AFTER next_service_odometer");
-      }
+    const [columns]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\`");
+    const columnNames = columns.map((c: any) => c.Field);
 
-      const [existingUrlColumn]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'image_url'");
-      if (existingUrlColumn.length > 0 && !existingUrlColumn[0].Type.toLowerCase().includes('longtext')) {
-        console.log("Upgrading 'image_url' to LONGTEXT...");
-        await dbPool.query("ALTER TABLE \`vehicles\` MODIFY COLUMN image_url LONGTEXT");
-      }
-
-      const [existingUserColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`users\` LIKE 'profile_image_url'");
-      if (existingUserColumns.length === 0) {
-        console.log("Adding 'profile_image_url' column to 'users' table...");
-        await dbPool.query("ALTER TABLE \`users\` ADD COLUMN profile_image_url TEXT AFTER role");
-      }
-
-      const [existingOwnershipColumn]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'ownership'");
-      if (existingOwnershipColumn.length === 0) {
-        console.log("Adding 'ownership' column to 'vehicles' table...");
-        await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN ownership VARCHAR(255) AFTER revenue_license_region");
-      }
-
-      const [existingTransferredColumn]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\` LIKE 'is_transferred'");
-      if (existingTransferredColumn.length === 0) {
-        console.log("Adding 'is_transferred' column to 'vehicles' table...");
-        await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_transferred BOOLEAN DEFAULT FALSE AFTER ownership");
-      }
-
-      // Update status ENUM if needed
-      console.log("Updating 'status' ENUM in 'vehicles' table...");
-      await dbPool.query("ALTER TABLE \`vehicles\` MODIFY COLUMN status ENUM('Active', 'Inactive') DEFAULT 'Active'");
-
-      // Ensure all tables are unicode supported (Migrations for existing tables)
-      console.log("Ensuring all tables use utf8mb4...");
-      const tables = ['vehicles', 'service_history', 'system_updates', 'upcoming_services', 'vehicle_images', 'users'];
-      for (const table of tables) {
-        await dbPool.query(`ALTER TABLE \`${table}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-      }
-
-      console.log("Columns verified/added and Unicode conversion complete.");
-    } catch (err) {
-      console.error("Column check/add or Unicode conversion failed:", err);
+    if (!columnNames.includes('next_service_odometer')) {
+      console.log("Adding 'next_service_odometer' column...");
+      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN next_service_odometer INT DEFAULT 0 AFTER next_service_date");
+    }
+    
+    if (!columnNames.includes('current_odometer')) {
+      console.log("Adding 'current_odometer' column...");
+      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN current_odometer INT DEFAULT 0 AFTER next_service_odometer");
     }
 
-    // Seed initial data if empty - REMOVED AS PER USER REQUEST
-    /*
-    const [rows]: any = await dbPool.query("SELECT COUNT(*) as count FROM `vehicles` text");
-    if (rows[0].count === 0) {
-      console.log("Seeding initial vehicle data...");
-      await dbPool.query(`
-        INSERT INTO `vehicles` (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, chassis_no, engine_no, registration_date, insurance_policy_no, insurance_expiry, revenue_license_expiry, revenue_license_region)
-        VALUES 
-        ('Toyota Land Cruiser', 'WP CAS-9022', 'Active', '2026-05-15', 50000, 45000, 'https://picsum.photos/seed/cruiser/800/600', 'LC200-1234567', '1VD-FTV-9876543', '2022-01-10', 'INS-99887766', '2026-12-31', '2026-06-30', 'Western'),
-        ('Mitsubishi Montero', 'WP CAA-1122', 'Expiring', '2026-04-05', 35000, 34200, 'https://picsum.photos/seed/montero/800/600', 'V98W-2233445', '4M41-5566778', '2021-05-20', 'INS-11223344', '2026-05-20', '2026-04-15', 'Western')
-      `);
-      console.log("Seeding completed.");
+    const imageUrlCol = columns.find((c: any) => c.Field === 'image_url');
+    if (imageUrlCol && !imageUrlCol.Type.toLowerCase().includes('longtext')) {
+      console.log("Upgrading 'image_url' to LONGTEXT...");
+      await dbPool.query("ALTER TABLE \`vehicles\` MODIFY COLUMN image_url LONGTEXT");
     }
-    */
+
+    if (!columnNames.includes('ownership')) {
+      console.log("Adding 'ownership' column to 'vehicles' table...");
+      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN ownership VARCHAR(255) AFTER revenue_license_region");
+    }
+
+    if (!columnNames.includes('is_transferred')) {
+      console.log("Adding 'is_transferred' column to 'vehicles' table...");
+      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_transferred BOOLEAN DEFAULT FALSE AFTER ownership");
+    }
+
+    const [userColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`users\`");
+    const userColumnNames = userColumns.map((c: any) => c.Field);
+    if (!userColumnNames.includes('profile_image_url')) {
+      console.log("Adding 'profile_image_url' column to 'users' table...");
+      await dbPool.query("ALTER TABLE \`users\` ADD COLUMN profile_image_url LONGTEXT AFTER role");
+    } else {
+      const profileImgCol = userColumns.find((c: any) => c.Field === 'profile_image_url');
+      if (profileImgCol && !profileImgCol.Type.toLowerCase().includes('longtext')) {
+        console.log("Upgrading 'profile_image_url' to LONGTEXT...");
+        await dbPool.query("ALTER TABLE \`users\` MODIFY COLUMN profile_image_url LONGTEXT");
+      }
+    }
 
     console.log("Database initialized successfully.");
     lastInitError = null;
@@ -271,7 +245,25 @@ async function initDb() {
 app.use(async (req, res, next) => {
   if (!isInitialized && !req.path.startsWith("/api/db-status")) {
     try {
-      await initDb();
+      // Don't await initDb if it's already initializing, 
+      // but also don't proceed if it's not ready.
+      if (!isInitializing) {
+        initDb().catch(err => console.error("Background init error:", err));
+      }
+      
+      // Wait up to 5 seconds for initialization to complete
+      let attempts = 0;
+      while (!isInitialized && attempts < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      if (!isInitialized) {
+        return res.status(503).json({ 
+          error: "Database is initializing", 
+          message: "The database is being set up. Please refresh in a few seconds." 
+        });
+      }
     } catch (error) {
       console.error("Middleware DB init error:", error);
     }
