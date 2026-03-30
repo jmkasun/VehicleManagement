@@ -3,13 +3,31 @@ import path from "path";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 
-dotenv.config();
+try {
+  dotenv.config();
+} catch (e) {
+  console.error("Error loading .env file:", e);
+}
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Simple ping route for Vercel health checks
+app.get("/api/ping", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV,
+    vercel: !!process.env.VERCEL
+  });
+});
 
 // MySQL Connection Pool
 let pool: mysql.Pool | null = null;
@@ -766,6 +784,20 @@ async function setupVite() {
   }
 }
 
-setupVite();
+try {
+  setupVite();
+} catch (e) {
+  console.error("Error in setupVite:", e);
+}
 
 export default app; // Export at the end to ensure all routes are registered
+
+// Global error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("Global error handler:", err);
+  res.status(500).json({
+    error: "Internal server error",
+    message: err.message,
+    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+  });
+});
