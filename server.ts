@@ -3,7 +3,8 @@ import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 
-import mysql from "mysql2/promise";
+import pg from "pg";
+const { Pool } = pg;
 
 console.log("Server.ts: Base imports completed");
 
@@ -12,6 +13,9 @@ try {
 } catch (e) {
   console.error("Error loading .env file:", e);
 }
+
+// Bypass SSL verification for database connections (Aiven/Managed DBs)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
@@ -34,65 +38,124 @@ app.get("/api/ping", (req, res) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// MySQL Connection Pool
-let pool: mysql.Pool | null = null;
+// PostgreSQL Connection Pool
+let pool: pg.Pool | null = null;
 let lastInitError: string | null = null;
 let isInitializing = false;
 let isInitialized = false;
 
 async function getPool() {
   if (!pool) {
-    const config: any = {
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
-      port: parseInt(process.env.MYSQL_PORT || "3306"),
-      connectionLimit: 5,
-      connectTimeout: 10000,
-    };
+    const pgHost = process.env.PGHOST || "";
+    const isConnectionString = pgHost.startsWith("postgres://") || pgHost.startsWith("postgresql://");
+    
+    console.log("Initializing database pool with host:", isConnectionString ? "CONNECTION_STRING" : pgHost);
+    
+    let config: any;
+    
+    if (isConnectionString) {
+      config = {
+        connectionString: pgHost,
+        max: 5,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      };
+    } else {
+      config = {
+        host: process.env.PGHOST,
+        user: process.env.PGUSER,
+        password: process.env.PGPASSWORD,
+        database: process.env.PGDATABASE,
+        port: parseInt(process.env.PGPORT || "5432"),
+        max: 5,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+      };
+    }
 
-    // SSL Configuration
-    // 1. If MYSQL_SSL is explicitly 'false', don't use SSL.
-    // 2. If MYSQL_SSL is 'true', use SSL.
-    // 3. If MYSQL_SSL is not set, use SSL for cloud providers (Aiven, AWS).
-    const useSsl = process.env.MYSQL_SSL === 'false' ? false : 
-                   (process.env.MYSQL_SSL === 'true' || 
-                    process.env.MYSQL_HOST?.includes('aivencloud.com') || 
-                    process.env.MYSQL_HOST?.includes('amazonaws.com'));
+    // SSL Configuration - Aiven and many other managed DBs require SSL
+    // We default to SSL if not explicitly disabled or if it's a known managed host
+    const useSsl = process.env.PGSSL !== 'false' && 
+                   (process.env.PGSSL === 'true' || 
+                    pgHost.includes('aivencloud.com') || 
+                    pgHost.includes('amazonaws.com') ||
+                    pgHost.includes('elephantsql.com') ||
+                    isConnectionString);
 
     if (useSsl) {
       config.ssl = {
         rejectUnauthorized: false,
       };
+      console.log("SSL enabled for database connection (rejectUnauthorized: false)");
+    } else {
+      console.log("SSL disabled for database connection");
     }
 
     console.log("Database config check:", {
-      host: !!config.host,
-      user: !!config.user,
-      password: !!config.password,
-      database: !!config.database,
-      port: config.port,
+      isConnectionString,
+      host: !!(isConnectionString ? config.connectionString : config.host),
+      user: !!(isConnectionString ? true : config.user),
+      password: !!(isConnectionString ? true : config.password),
+      database: !!(isConnectionString ? true : config.database),
+      port: isConnectionString ? "from string" : config.port,
       ssl: !!config.ssl,
-      sslEnv: process.env.MYSQL_SSL
+      sslEnv: process.env.PGSSL,
+      nodeTlsRejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED
     });
 
-    const missing = [];
-    if (!config.host) missing.push("MYSQL_HOST");
-    if (!config.user) missing.push("MYSQL_USER");
-    if (!config.password) missing.push("MYSQL_PASSWORD");
-    if (!config.database) missing.push("MYSQL_DATABASE");
+    if (!isConnectionString) {
+      const missing = [];
+      if (!config.host) missing.push("PGHOST");
+      if (!config.user) missing.push("PGUSER");
+      if (!config.password) missing.push("PGPASSWORD");
+      if (!config.database) missing.push("PGDATABASE");
 
-    if (missing.length > 0) {
-      const msg = `MySQL configuration is incomplete. Missing: ${missing.join(", ")}. API routes will fail.`;
+      if (missing.length > 0) {
+        const msg = `PostgreSQL configuration is incomplete. Missing: ${missing.join(", ")}. API routes will fail.`;
+        console.warn(msg);
+        lastInitError = msg;
+        return null;
+      }
+    } else if (!config.connectionString) {
+      const msg = "PostgreSQL connection string is empty. API routes will fail.";
       console.warn(msg);
       lastInitError = msg;
       return null;
     }
 
-    pool = mysql.createPool(config);
+    pool = new Pool(config);
   }
   return pool;
+}
+
+async function startKeepAlive() {
+  if ((global as any).keepAliveStarted) return;
+  (global as any).keepAliveStarted = true;
+
+  console.log("Database keep-alive task started (every 1 hour)");
+  
+  // Initial ping
+  try {
+    const dbPool = await getPool();
+    if (dbPool) {
+      await dbPool.query("SELECT 1");
+      console.log("Initial keep-alive ping successful");
+    }
+  } catch (e) {
+    console.error("Initial keep-alive ping failed:", e);
+  }
+
+  setInterval(async () => {
+    try {
+      const dbPool = await getPool();
+      if (dbPool) {
+        const { rows }: any = await dbPool.query("SELECT 1 as ping");
+        console.log(`[${new Date().toISOString()}] Database keep-alive ping:`, rows[0]?.ping === 1 ? "SUCCESS" : "FAILED");
+      }
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Database keep-alive ping ERROR:`, error);
+    }
+  }, 3600000); // Every 1 hour
 }
 
 async function initDb() {
@@ -115,187 +178,114 @@ async function initDb() {
 
     console.log("Creating 'vehicles' table...");
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS \`vehicles\` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS vehicles (
+        id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         license_plate VARCHAR(50) NOT NULL,
-        status ENUM('Active', 'Inactive') DEFAULT 'Active',
+        status TEXT CHECK (status IN ('Active', 'Inactive')) DEFAULT 'Active',
         next_service_date VARCHAR(50),
         next_service_odometer INT DEFAULT 0,
         current_odometer INT DEFAULT 0,
-        image_url LONGTEXT,
+        image_url TEXT,
         engine_no VARCHAR(255),
+        chassis_no VARCHAR(255),
         registration_date VARCHAR(50),
         insurance_expiry VARCHAR(50),
+        insurance_policy_no VARCHAR(255),
         revenue_license_expiry VARCHAR(50),
         revenue_license_region VARCHAR(100),
         ownership VARCHAR(255),
         is_transferred BOOLEAN DEFAULT FALSE,
         is_deleted BOOLEAN DEFAULT FALSE
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      )
     `);
 
     console.log("Creating 'service_history' table...");
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS \`service_history\` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS service_history (
+        id SERIAL PRIMARY KEY,
         vehicle_id INT,
         date VARCHAR(50) NOT NULL,
         odometer INT,
         title VARCHAR(255),
         description TEXT,
-        type ENUM('Full Service', 'Tire Rotation', 'Oil Change', 'Brake Overhaul', 'Battery Replacement'),
+        type TEXT CHECK (type IN ('Full Service', 'Tire Rotation', 'Oil Change', 'Brake Overhaul', 'Battery Replacement')),
         cost DECIMAL(10, 2),
-        parts LONGTEXT,
+        parts TEXT,
         labor_cost DECIMAL(10, 2),
         is_deleted BOOLEAN DEFAULT FALSE
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      )
     `);
 
     console.log("Creating 'system_updates' table...");
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS \`system_updates\` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS system_updates (
+        id SERIAL PRIMARY KEY,
         message TEXT NOT NULL,
         is_new BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      )
     `);
 
     console.log("Creating 'upcoming_services' table...");
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS \`upcoming_services\` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS upcoming_services (
+        id SERIAL PRIMARY KEY,
         vehicle_id INT NOT NULL,
         title VARCHAR(255) NOT NULL,
         description TEXT,
         due_date VARCHAR(50),
         due_odometer INT,
-        priority ENUM('Low', 'Medium', 'High') DEFAULT 'Medium',
-        status ENUM('Pending', 'Completed') DEFAULT 'Pending',
+        priority TEXT CHECK (priority IN ('Low', 'Medium', 'High')) DEFAULT 'Medium',
+        status TEXT CHECK (status IN ('Pending', 'Completed')) DEFAULT 'Pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      )
     `);
 
     console.log("Creating 'vehicle_images' table...");
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS \`vehicle_images\` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS vehicle_images (
+        id SERIAL PRIMARY KEY,
         vehicle_id INT NOT NULL,
         topic VARCHAR(255) NOT NULL,
         description TEXT,
-        image_url LONGTEXT NOT NULL,
+        image_url TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      )
     `);
 
     console.log("Creating 'users' table...");
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS \`users\` (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
         email VARCHAR(255) UNIQUE NOT NULL,
         password VARCHAR(255) NOT NULL,
-        role ENUM('admin', 'user') DEFAULT 'user',
-        profile_image_url LONGTEXT,
+        role TEXT CHECK (role IN ('admin', 'user')) DEFAULT 'user',
+        profile_image_url TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         is_deleted BOOLEAN DEFAULT FALSE
-      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+      )
     `);
 
     // Seed admin user
-    const [adminRows]: any = await dbPool.query("SELECT * FROM \`users\` WHERE email = 'kasun.jm@gmail.com'");
+    const { rows: adminRows }: any = await dbPool.query("SELECT * FROM users WHERE email = $1", ['kasun.jm@gmail.com']);
     if (adminRows.length === 0) {
       console.log("Seeding admin user...");
       await dbPool.query(
-        "INSERT INTO \`users\` (email, password, role) VALUES (?, ?, ?)",
+        "INSERT INTO users (email, password, role) VALUES ($1, $2, $3)",
         ['kasun.jm@gmail.com', 'admin@123', 'admin']
       );
-    }
-
-    // Ensure new columns exist (Migrations) - Optimized to run only if needed
-    console.log("Checking for missing columns...");
-    const [columns]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicles\`");
-    const columnNames = columns.map((c: any) => c.Field);
-
-    if (!columnNames.includes('next_service_odometer')) {
-      console.log("Adding 'next_service_odometer' column...");
-      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN next_service_odometer INT DEFAULT 0 AFTER next_service_date");
-    }
-    
-    if (!columnNames.includes('current_odometer')) {
-      console.log("Adding 'current_odometer' column...");
-      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN current_odometer INT DEFAULT 0 AFTER next_service_odometer");
-    }
-
-    const imageUrlCol = columns.find((c: any) => c.Field === 'image_url');
-    if (imageUrlCol && !imageUrlCol.Type.toLowerCase().includes('longtext')) {
-      console.log("Upgrading 'image_url' to LONGTEXT...");
-      await dbPool.query("ALTER TABLE \`vehicles\` MODIFY COLUMN image_url LONGTEXT");
-    }
-
-    if (!columnNames.includes('ownership')) {
-      console.log("Adding 'ownership' column to 'vehicles' table...");
-      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN ownership VARCHAR(255) AFTER revenue_license_region");
-    }
-
-    if (!columnNames.includes('is_transferred')) {
-      console.log("Adding 'is_transferred' column to 'vehicles' table...");
-      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_transferred BOOLEAN DEFAULT FALSE AFTER ownership");
-    }
-
-    if (!columnNames.includes('is_deleted')) {
-      console.log("Adding 'is_deleted' column to 'vehicles' table...");
-      await dbPool.query("ALTER TABLE \`vehicles\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
-    }
-
-    const [serviceHistoryColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`service_history\`");
-    if (!serviceHistoryColumns.map((c: any) => c.Field).includes('is_deleted')) {
-      console.log("Adding 'is_deleted' column to 'service_history' table...");
-      await dbPool.query("ALTER TABLE \`service_history\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
-    }
-
-    const [systemUpdatesColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`system_updates\`");
-    if (!systemUpdatesColumns.map((c: any) => c.Field).includes('is_deleted')) {
-      console.log("Adding 'is_deleted' column to 'system_updates' table...");
-      await dbPool.query("ALTER TABLE \`system_updates\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
-    }
-
-    const [upcomingServicesColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`upcoming_services\`");
-    if (!upcomingServicesColumns.map((c: any) => c.Field).includes('is_deleted')) {
-      console.log("Adding 'is_deleted' column to 'upcoming_services' table...");
-      await dbPool.query("ALTER TABLE \`upcoming_services\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
-    }
-
-    const [vehicleImagesColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`vehicle_images\`");
-    if (!vehicleImagesColumns.map((c: any) => c.Field).includes('is_deleted')) {
-      console.log("Adding 'is_deleted' column to 'vehicle_images' table...");
-      await dbPool.query("ALTER TABLE \`vehicle_images\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
-    }
-
-    const [userColumns]: any = await dbPool.query("SHOW COLUMNS FROM \`users\`");
-    const userColumnNames = userColumns.map((c: any) => c.Field);
-    if (!userColumnNames.includes('is_deleted')) {
-      console.log("Adding 'is_deleted' column to 'users' table...");
-      await dbPool.query("ALTER TABLE \`users\` ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE");
-    }
-
-    if (!userColumnNames.includes('profile_image_url')) {
-      console.log("Adding 'profile_image_url' column to 'users' table...");
-      await dbPool.query("ALTER TABLE \`users\` ADD COLUMN profile_image_url LONGTEXT AFTER role");
-    } else {
-      const profileImgCol = userColumns.find((c: any) => c.Field === 'profile_image_url');
-      if (profileImgCol && !profileImgCol.Type.toLowerCase().includes('longtext')) {
-        console.log("Upgrading 'profile_image_url' to LONGTEXT...");
-        await dbPool.query("ALTER TABLE \`users\` MODIFY COLUMN profile_image_url LONGTEXT");
-      }
     }
 
     console.log("Database initialized successfully.");
     lastInitError = null;
     isInitialized = true;
+    
+    // Start keep-alive task
+    startKeepAlive().catch(err => console.error("Error starting keep-alive:", err));
   } catch (error: any) {
     console.error("Error initializing database:", error);
     lastInitError = error.message;
@@ -343,12 +333,12 @@ app.get("/api/db-status", async (req, res) => {
 
   try {
     await dbPool.query("SELECT 1");
-    const [tables]: any = await dbPool.query("SHOW TABLES");
+    const { rows: tables }: any = await dbPool.query("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
     res.json({ 
       status: "ok", 
       message: "Connected to database",
-      database: process.env.MYSQL_DATABASE,
-      tables: tables.map((t: any) => Object.values(t)[0]),
+      database: process.env.PGDATABASE,
+      tables: tables.map((t: any) => t.table_name),
       lastInitError
     });
   } catch (error: any) {
@@ -363,7 +353,7 @@ app.get("/api/vehicles", async (req, res) => {
   }
 
   try {
-    const [rows]: any = await dbPool.query("SELECT * FROM \`vehicles\` WHERE is_deleted = FALSE");
+    const { rows }: any = await dbPool.query("SELECT * FROM vehicles WHERE is_deleted = FALSE");
     const mappedRows = rows.map((row: any) => ({
       id: row.id.toString(),
       name: row.name,
@@ -398,12 +388,12 @@ app.get("/api/service-history/:vehicleId", async (req, res) => {
   }
 
   try {
-    const [rows] = await dbPool.query(
-      "SELECT * FROM \`service_history\` WHERE vehicle_id = ? AND is_deleted = FALSE",
+    const { rows } = await dbPool.query(
+      "SELECT * FROM service_history WHERE vehicle_id = $1 AND is_deleted = FALSE",
       [req.params.vehicleId]
     );
     
-    // Parse parts JSON string if stored as LONGTEXT
+    // Parse parts JSON string if stored as TEXT
     const mappedRows = (rows as any[]).map(row => ({
       ...row,
       parts: typeof row.parts === 'string' ? JSON.parse(row.parts) : row.parts,
@@ -429,13 +419,13 @@ app.post("/api/service-history", async (req, res) => {
   const record = req.body;
   try {
     // Check if vehicle exists and is not deleted
-    const [vehicles]: any = await dbPool.query("SELECT id FROM \`vehicles\` WHERE id = ? AND is_deleted = FALSE", [record.vehicleId]);
+    const { rows: vehicles }: any = await dbPool.query("SELECT id FROM vehicles WHERE id = $1 AND is_deleted = FALSE", [record.vehicleId]);
     if (vehicles.length === 0) {
       return res.status(404).json({ error: "Vehicle not found or deleted" });
     }
 
-    const [result] = await dbPool.query(
-      "INSERT INTO \`service_history\` (vehicle_id, date, odometer, title, description, type, cost, parts, labor_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    const { rows: result } = await dbPool.query(
+      "INSERT INTO service_history (vehicle_id, date, odometer, title, description, type, cost, parts, labor_cost) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
       [
         record.vehicleId,
         record.date,
@@ -448,7 +438,7 @@ app.post("/api/service-history", async (req, res) => {
         record.laborCost,
       ]
     );
-    res.status(201).json({ id: (result as any).insertId, ...record });
+    res.status(201).json({ id: result[0].id, ...record });
   } catch (error: any) {
     console.error("Error saving service record:", error);
     res.status(500).json({ 
@@ -466,8 +456,8 @@ app.post("/api/vehicles", async (req, res) => {
 
   const vehicle = req.body;
   try {
-    const [result] = await dbPool.query(
-      "INSERT INTO \`vehicles\` (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, engine_no, registration_date, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership, is_transferred) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    const { rows: result } = await dbPool.query(
+      "INSERT INTO vehicles (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, engine_no, registration_date, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership, is_transferred) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -482,10 +472,10 @@ app.post("/api/vehicles", async (req, res) => {
         vehicle.revenueLicenseExpiry,
         vehicle.revenueLicenseRegion,
         vehicle.ownership,
-        vehicle.isTransferred ? 1 : 0,
+        vehicle.isTransferred ? true : false,
       ]
     );
-    res.status(201).json({ id: (result as any).insertId, ...vehicle });
+    res.status(201).json({ id: result[0].id, ...vehicle });
   } catch (error: any) {
     console.error("Error saving vehicle:", error);
     res.status(500).json({ 
@@ -505,7 +495,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
   const vehicle = req.body;
   try {
     await dbPool.query(
-      "UPDATE \`vehicles\` SET name = ?, license_plate = ?, status = ?, next_service_date = ?, next_service_odometer = ?, current_odometer = ?, image_url = ?, engine_no = ?, registration_date = ?, insurance_expiry = ?, revenue_license_expiry = ?, revenue_license_region = ?, ownership = ?, is_transferred = ? WHERE id = ? AND is_deleted = FALSE",
+      "UPDATE vehicles SET name = $1, license_plate = $2, status = $3, next_service_date = $4, next_service_odometer = $5, current_odometer = $6, image_url = $7, engine_no = $8, registration_date = $9, insurance_expiry = $10, revenue_license_expiry = $11, revenue_license_region = $12, ownership = $13, is_transferred = $14 WHERE id = $15 AND is_deleted = FALSE",
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -520,7 +510,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
         vehicle.revenueLicenseExpiry,
         vehicle.revenueLicenseRegion,
         vehicle.ownership,
-        vehicle.isTransferred ? 1 : 0,
+        vehicle.isTransferred ? true : false,
         vehicleId,
       ]
     );
@@ -543,12 +533,12 @@ app.delete("/api/vehicles/:id", async (req, res) => {
   const vehicleId = req.params.id;
   try {
     // Soft delete associated data first
-    await dbPool.query("UPDATE \`upcoming_services\` SET is_deleted = TRUE WHERE vehicle_id = ?", [vehicleId]);
-    await dbPool.query("UPDATE \`vehicle_images\` SET is_deleted = TRUE WHERE vehicle_id = ?", [vehicleId]);
-    await dbPool.query("UPDATE \`service_history\` SET is_deleted = TRUE WHERE vehicle_id = ?", [vehicleId]);
+    await dbPool.query("UPDATE upcoming_services SET is_deleted = TRUE WHERE vehicle_id = $1", [vehicleId]);
+    await dbPool.query("UPDATE vehicle_images SET is_deleted = TRUE WHERE vehicle_id = $1", [vehicleId]);
+    await dbPool.query("UPDATE service_history SET is_deleted = TRUE WHERE vehicle_id = $1", [vehicleId]);
     
     // Soft delete the vehicle
-    await dbPool.query("UPDATE \`vehicles\` SET is_deleted = TRUE WHERE id = ?", [vehicleId]);
+    await dbPool.query("UPDATE vehicles SET is_deleted = TRUE WHERE id = $1", [vehicleId]);
     
     res.status(204).send();
   } catch (error: any) {
@@ -565,7 +555,7 @@ app.get("/api/system-updates", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query("SELECT * FROM \`system_updates\` WHERE is_deleted = FALSE ORDER BY created_at DESC LIMIT 5");
+    const { rows }: any = await dbPool.query("SELECT * FROM system_updates WHERE is_deleted = FALSE ORDER BY created_at DESC LIMIT 5");
     res.json(rows.map((row: any) => ({
       id: row.id,
       message: row.message,
@@ -583,11 +573,11 @@ app.post("/api/system-updates", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { message } = req.body;
   try {
-    const [result]: any = await dbPool.query(
-      "INSERT INTO \`system_updates\` (message) VALUES (?)",
+    const { rows: result }: any = await dbPool.query(
+      "INSERT INTO system_updates (message) VALUES ($1) RETURNING id",
       [message]
     );
-    res.status(201).json({ id: result.insertId, message, isNew: true });
+    res.status(201).json({ id: result[0].id, message, isNew: true });
   } catch (error) {
     console.error("Error adding system update:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -599,8 +589,8 @@ app.get("/api/upcoming-services", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query(
-      "SELECT us.*, v.name as vehicleName, v.license_plate as licensePlate, v.image_url as vehicleImageUrl FROM \`upcoming_services\` us JOIN \`vehicles\` v ON us.vehicle_id = v.id WHERE us.status = 'Pending' AND us.is_deleted = FALSE AND v.is_deleted = FALSE ORDER BY us.due_date ASC"
+    const { rows }: any = await dbPool.query(
+      "SELECT us.*, v.name as vehicleName, v.license_plate as licensePlate, v.image_url as vehicleImageUrl FROM upcoming_services us JOIN vehicles v ON us.vehicle_id = v.id WHERE us.status = 'Pending' AND us.is_deleted = FALSE AND v.is_deleted = FALSE ORDER BY us.due_date ASC"
     );
     res.json(rows.map((row: any) => ({
       id: row.id,
@@ -625,8 +615,8 @@ app.get("/api/upcoming-services/:vehicleId", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query(
-      "SELECT * FROM \`upcoming_services\` WHERE vehicle_id = ? AND status = 'Pending' AND is_deleted = FALSE ORDER BY due_date ASC",
+    const { rows }: any = await dbPool.query(
+      "SELECT * FROM upcoming_services WHERE vehicle_id = $1 AND status = 'Pending' AND is_deleted = FALSE ORDER BY due_date ASC",
       [req.params.vehicleId]
     );
     res.json(rows.map((row: any) => ({
@@ -651,16 +641,16 @@ app.post("/api/upcoming-services", async (req, res) => {
   const service = req.body;
   try {
     // Check if vehicle exists and is not deleted
-    const [vehicles]: any = await dbPool.query("SELECT id FROM \`vehicles\` WHERE id = ? AND is_deleted = FALSE", [service.vehicleId]);
+    const { rows: vehicles }: any = await dbPool.query("SELECT id FROM vehicles WHERE id = $1 AND is_deleted = FALSE", [service.vehicleId]);
     if (vehicles.length === 0) {
       return res.status(404).json({ error: "Vehicle not found or deleted" });
     }
 
-    const [result]: any = await dbPool.query(
-      "INSERT INTO \`upcoming_services\` (vehicle_id, title, description, due_date, due_odometer, priority) VALUES (?, ?, ?, ?, ?, ?)",
+    const { rows: result }: any = await dbPool.query(
+      "INSERT INTO upcoming_services (vehicle_id, title, description, due_date, due_odometer, priority) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
       [service.vehicleId, service.title, service.description, service.dueDate, service.dueOdometer, service.priority || 'Medium']
     );
-    res.status(201).json({ id: result.insertId, ...service });
+    res.status(201).json({ id: result[0].id, ...service });
   } catch (error) {
     console.error("Error adding upcoming service:", error);
     res.status(500).json({ error: "Internal server error" });
@@ -671,7 +661,7 @@ app.delete("/api/upcoming-services/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("UPDATE \`upcoming_services\` SET is_deleted = TRUE WHERE id = ?", [req.params.id]);
+    await dbPool.query("UPDATE upcoming_services SET is_deleted = TRUE WHERE id = $1", [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting upcoming service:", error);
@@ -685,7 +675,7 @@ app.put("/api/upcoming-services/:id", async (req, res) => {
   const service = req.body;
   try {
     await dbPool.query(
-      "UPDATE \`upcoming_services\` SET title = ?, description = ?, due_date = ?, due_odometer = ?, priority = ?, status = ? WHERE id = ? AND is_deleted = FALSE",
+      "UPDATE upcoming_services SET title = $1, description = $2, due_date = $3, due_odometer = $4, priority = $5, status = $6 WHERE id = $7 AND is_deleted = FALSE",
       [service.title, service.description, service.dueDate, service.dueOdometer, service.priority, service.status, req.params.id]
     );
     res.json({ id: req.params.id, ...service });
@@ -700,8 +690,8 @@ app.get("/api/vehicles/:id/images", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query(
-      "SELECT * FROM \`vehicle_images\` WHERE vehicle_id = ? AND is_deleted = FALSE ORDER BY created_at DESC",
+    const { rows }: any = await dbPool.query(
+      "SELECT * FROM vehicle_images WHERE vehicle_id = $1 AND is_deleted = FALSE ORDER BY created_at DESC",
       [req.params.id]
     );
     res.json(rows.map((row: any) => ({
@@ -725,17 +715,17 @@ app.post("/api/vehicles/:id/images", async (req, res) => {
   const vehicleId = req.params.id;
   try {
     // Check if vehicle exists and is not deleted
-    const [vehicles]: any = await dbPool.query("SELECT id FROM \`vehicles\` WHERE id = ? AND is_deleted = FALSE", [vehicleId]);
+    const { rows: vehicles }: any = await dbPool.query("SELECT id FROM vehicles WHERE id = $1 AND is_deleted = FALSE", [vehicleId]);
     if (vehicles.length === 0) {
       return res.status(404).json({ error: "Vehicle not found or deleted" });
     }
 
-    const [result]: any = await dbPool.query(
-      "INSERT INTO \`vehicle_images\` (vehicle_id, topic, description, image_url) VALUES (?, ?, ?, ?)",
+    const { rows: result }: any = await dbPool.query(
+      "INSERT INTO vehicle_images (vehicle_id, topic, description, image_url) VALUES ($1, $2, $3, $4) RETURNING id",
       [vehicleId, topic, description, imageUrl]
     );
     res.status(201).json({ 
-      id: result.insertId.toString(), 
+      id: result[0].id.toString(), 
       vehicleId, 
       topic, 
       description, 
@@ -752,7 +742,7 @@ app.delete("/api/vehicle-images/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("UPDATE \`vehicle_images\` SET is_deleted = TRUE WHERE id = ?", [req.params.id]);
+    await dbPool.query("UPDATE vehicle_images SET is_deleted = TRUE WHERE id = $1", [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting vehicle image:", error);
@@ -766,7 +756,7 @@ app.put("/api/vehicle-images/:id", async (req, res) => {
   const { topic, description, imageUrl } = req.body;
   try {
     await dbPool.query(
-      "UPDATE \`vehicle_images\` SET topic = ?, description = ?, image_url = ? WHERE id = ? AND is_deleted = FALSE",
+      "UPDATE vehicle_images SET topic = $1, description = $2, image_url = $3 WHERE id = $4 AND is_deleted = FALSE",
       [topic, description, imageUrl, req.params.id]
     );
     res.json({ id: req.params.id, topic, description, imageUrl });
@@ -781,7 +771,7 @@ app.get("/api/users", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const [rows]: any = await dbPool.query("SELECT id, email, role, profile_image_url, created_at FROM \`users\` WHERE is_deleted = FALSE ORDER BY created_at DESC");
+    const { rows }: any = await dbPool.query("SELECT id, email, role, profile_image_url, created_at FROM users WHERE is_deleted = FALSE ORDER BY created_at DESC");
     res.json(rows.map((row: any) => ({
       id: row.id.toString(),
       email: row.email,
@@ -800,14 +790,14 @@ app.post("/api/users", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { email, password, role, profileImageUrl } = req.body;
   try {
-    const [result]: any = await dbPool.query(
-      "INSERT INTO \`users\` (email, password, role, profile_image_url) VALUES (?, ?, ?, ?)",
+    const { rows: result }: any = await dbPool.query(
+      "INSERT INTO users (email, password, role, profile_image_url) VALUES ($1, $2, $3, $4) RETURNING id",
       [email, password, role || 'user', profileImageUrl || null]
     );
-    res.status(201).json({ id: result.insertId.toString(), email, role: role || 'user', profileImageUrl });
+    res.status(201).json({ id: result[0].id.toString(), email, role: role || 'user', profileImageUrl });
   } catch (error: any) {
     console.error("Error adding user:", error);
-    if (error.code === 'ER_DUP_ENTRY') {
+    if (error.code === '23505') { // PostgreSQL unique violation
       res.status(400).json({ error: "Email already exists" });
     } else {
       res.status(500).json({ error: "Internal server error" });
@@ -820,11 +810,11 @@ app.put("/api/users/:id", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { email, password, role, profileImageUrl } = req.body;
   try {
-    let query = "UPDATE \`users\` SET email = ?, role = ?, profile_image_url = ? WHERE id = ? AND is_deleted = FALSE";
+    let query = "UPDATE users SET email = $1, role = $2, profile_image_url = $3 WHERE id = $4 AND is_deleted = FALSE";
     let params = [email, role, profileImageUrl, req.params.id];
     
     if (password) {
-      query = "UPDATE \`users\` SET email = ?, password = ?, role = ?, profile_image_url = ? WHERE id = ? AND is_deleted = FALSE";
+      query = "UPDATE users SET email = $1, password = $2, role = $3, profile_image_url = $4 WHERE id = $5 AND is_deleted = FALSE";
       params = [email, password, role, profileImageUrl, req.params.id];
     }
     
@@ -840,7 +830,7 @@ app.delete("/api/users/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("UPDATE \`users\` SET is_deleted = TRUE WHERE id = ?", [req.params.id]);
+    await dbPool.query("UPDATE users SET is_deleted = TRUE WHERE id = $1", [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -855,8 +845,8 @@ app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
   
   try {
-    const [rows]: any = await dbPool.query(
-      "SELECT * FROM \`users\` WHERE email = ? AND password = ? AND is_deleted = FALSE",
+    const { rows }: any = await dbPool.query(
+      "SELECT * FROM users WHERE email = $1 AND password = $2 AND is_deleted = FALSE",
       [email, password]
     );
     
