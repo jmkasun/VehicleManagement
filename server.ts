@@ -24,6 +24,17 @@ process.on('unhandledRejection', (reason, promise) => {
 const app = express();
 const PORT = 3000;
 
+// Table Prefix for app-specific tables
+const TABLE_PREFIX = "v_";
+
+// Table names with prefix
+const T_VEHICLES = `${TABLE_PREFIX}vehicles`;
+const T_SERVICE_HISTORY = `${TABLE_PREFIX}service_history`;
+const T_SYSTEM_UPDATES = `${TABLE_PREFIX}system_updates`;
+const T_UPCOMING_SERVICES = `${TABLE_PREFIX}upcoming_services`;
+const T_VEHICLE_IMAGES = `${TABLE_PREFIX}vehicle_images`;
+const T_USERS = `users`; // Common table, no prefix
+
 // Simple ping route for Vercel health checks - MOVED TO TOP
 app.get("/api/ping", (req, res) => {
   console.log("Ping request received");
@@ -46,16 +57,16 @@ let isInitialized = false;
 
 async function getPool() {
   if (!pool) {
-    const pgHost = process.env.PGHOST || "";
-    const isConnectionString = pgHost.startsWith("postgres://") || pgHost.startsWith("postgresql://");
+    const dbUrl = process.env.DATABASE_URL || process.env.PGHOST || "";
+    const isConnectionString = dbUrl.startsWith("postgres://") || dbUrl.startsWith("postgresql://");
     
-    console.log("Initializing database pool with host:", isConnectionString ? "CONNECTION_STRING" : pgHost);
+    console.log("Initializing database pool with host:", isConnectionString ? "CONNECTION_STRING" : dbUrl);
     
     let config: any;
     
     if (isConnectionString) {
       config = {
-        connectionString: pgHost,
+        connectionString: dbUrl,
         max: 5,
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis: 10000,
@@ -77,9 +88,9 @@ async function getPool() {
     // We default to SSL if not explicitly disabled or if it's a known managed host
     const useSsl = process.env.PGSSL !== 'false' && 
                    (process.env.PGSSL === 'true' || 
-                    pgHost.includes('aivencloud.com') || 
-                    pgHost.includes('amazonaws.com') ||
-                    pgHost.includes('elephantsql.com') ||
+                    dbUrl.includes('aivencloud.com') || 
+                    dbUrl.includes('amazonaws.com') ||
+                    dbUrl.includes('elephantsql.com') ||
                     isConnectionString);
 
     if (useSsl) {
@@ -176,9 +187,24 @@ async function initDb() {
     await dbPool.query("SELECT 1");
     console.log("Database connection test successful.");
 
-    console.log("Creating 'vehicles' table...");
+    // Cleanup: Drop old tables without prefix if they exist (as requested by user)
+    const oldTables = ["vehicles", "service_history", "system_updates", "upcoming_services", "vehicle_images"];
+    for (const table of oldTables) {
+      try {
+        // Only drop if it's not the same as the new prefixed table name
+        if (table !== T_VEHICLES && table !== T_SERVICE_HISTORY && table !== T_SYSTEM_UPDATES && 
+            table !== T_UPCOMING_SERVICES && table !== T_VEHICLE_IMAGES) {
+          console.log(`Cleaning up old table '${table}'...`);
+          await dbPool.query(`DROP TABLE IF EXISTS ${table} CASCADE`);
+        }
+      } catch (err) {
+        console.log(`Note: Could not drop old table ${table}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    console.log(`Creating '${T_VEHICLES}' table...`);
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS vehicles (
+      CREATE TABLE IF NOT EXISTS ${T_VEHICLES} (
         id SERIAL PRIMARY KEY,
         name VARCHAR(255) NOT NULL,
         license_plate VARCHAR(50) NOT NULL,
@@ -200,9 +226,9 @@ async function initDb() {
       )
     `);
 
-    console.log("Creating 'service_history' table...");
+    console.log(`Creating '${T_SERVICE_HISTORY}' table...`);
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS service_history (
+      CREATE TABLE IF NOT EXISTS ${T_SERVICE_HISTORY} (
         id SERIAL PRIMARY KEY,
         vehicle_id INT,
         date VARCHAR(50) NOT NULL,
@@ -217,9 +243,9 @@ async function initDb() {
       )
     `);
 
-    console.log("Creating 'system_updates' table...");
+    console.log(`Creating '${T_SYSTEM_UPDATES}' table...`);
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS system_updates (
+      CREATE TABLE IF NOT EXISTS ${T_SYSTEM_UPDATES} (
         id SERIAL PRIMARY KEY,
         message TEXT NOT NULL,
         is_new BOOLEAN DEFAULT TRUE,
@@ -228,9 +254,9 @@ async function initDb() {
       )
     `);
 
-    console.log("Creating 'upcoming_services' table...");
+    console.log(`Creating '${T_UPCOMING_SERVICES}' table...`);
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS upcoming_services (
+      CREATE TABLE IF NOT EXISTS ${T_UPCOMING_SERVICES} (
         id SERIAL PRIMARY KEY,
         vehicle_id INT NOT NULL,
         title VARCHAR(255) NOT NULL,
@@ -244,9 +270,9 @@ async function initDb() {
       )
     `);
 
-    console.log("Creating 'vehicle_images' table...");
+    console.log(`Creating '${T_VEHICLE_IMAGES}' table...`);
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS vehicle_images (
+      CREATE TABLE IF NOT EXISTS ${T_VEHICLE_IMAGES} (
         id SERIAL PRIMARY KEY,
         vehicle_id INT NOT NULL,
         topic VARCHAR(255) NOT NULL,
@@ -257,26 +283,52 @@ async function initDb() {
       )
     `);
 
-    console.log("Creating 'users' table...");
+    // Users table - Common table, check and add missing columns if it exists
+    console.log(`Ensuring '${T_USERS}' table has required columns...`);
+    // Create basic table if it doesn't exist at all
     await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role TEXT CHECK (role IN ('admin', 'user')) DEFAULT 'user',
-        profile_image_url TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_deleted BOOLEAN DEFAULT FALSE
+      CREATE TABLE IF NOT EXISTS ${T_USERS} (
+        username TEXT PRIMARY KEY,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'user'
       )
     `);
 
+    // Add missing columns to existing users table
+    const columnsToAdd = [
+      { name: 'id', type: 'SERIAL' },
+      { name: 'email', type: 'VARCHAR(255) UNIQUE' },
+      { name: 'profile_image_url', type: 'TEXT' },
+      { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
+      { name: 'is_deleted', type: 'BOOLEAN DEFAULT FALSE' }
+    ];
+
+    for (const col of columnsToAdd) {
+      try {
+        // We use a more robust check for columns
+        const { rows: colExists } = await dbPool.query(`
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = $1 AND column_name = $2
+        `, [T_USERS, col.name]);
+
+        if (colExists.length === 0) {
+          console.log(`Adding missing column '${col.name}' to '${T_USERS}'...`);
+          await dbPool.query(`ALTER TABLE ${T_USERS} ADD COLUMN ${col.name} ${col.type}`);
+        }
+      } catch (err) {
+        console.log(`Note: Could not add column ${col.name} to ${T_USERS}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
     // Seed admin user
-    const { rows: adminRows }: any = await dbPool.query("SELECT * FROM users WHERE email = $1", ['kasun.jm@gmail.com']);
+    const adminEmail = 'kasun.jm@gmail.com';
+    // Check by both email and username since it's a shared table
+    const { rows: adminRows }: any = await dbPool.query(`SELECT * FROM ${T_USERS} WHERE email = $1 OR username = $2`, [adminEmail, adminEmail]);
     if (adminRows.length === 0) {
       console.log("Seeding admin user...");
       await dbPool.query(
-        "INSERT INTO users (email, password, role) VALUES ($1, $2, $3)",
-        ['kasun.jm@gmail.com', 'admin@123', 'admin']
+        `INSERT INTO ${T_USERS} (username, email, password, role) VALUES ($1, $2, $3, $4)`,
+        [adminEmail, adminEmail, 'admin@123', 'admin']
       );
     }
 
@@ -353,7 +405,7 @@ app.get("/api/vehicles", async (req, res) => {
   }
 
   try {
-    const { rows }: any = await dbPool.query("SELECT * FROM vehicles WHERE is_deleted = FALSE");
+    const { rows }: any = await dbPool.query(`SELECT * FROM ${T_VEHICLES} WHERE is_deleted = FALSE`);
     const mappedRows = rows.map((row: any) => ({
       id: row.id.toString(),
       name: row.name,
@@ -389,7 +441,7 @@ app.get("/api/service-history/:vehicleId", async (req, res) => {
 
   try {
     const { rows } = await dbPool.query(
-      "SELECT * FROM service_history WHERE vehicle_id = $1 AND is_deleted = FALSE",
+      `SELECT * FROM ${T_SERVICE_HISTORY} WHERE vehicle_id = $1 AND is_deleted = FALSE`,
       [req.params.vehicleId]
     );
     
@@ -419,13 +471,13 @@ app.post("/api/service-history", async (req, res) => {
   const record = req.body;
   try {
     // Check if vehicle exists and is not deleted
-    const { rows: vehicles }: any = await dbPool.query("SELECT id FROM vehicles WHERE id = $1 AND is_deleted = FALSE", [record.vehicleId]);
+    const { rows: vehicles }: any = await dbPool.query(`SELECT id FROM ${T_VEHICLES} WHERE id = $1 AND is_deleted = FALSE`, [record.vehicleId]);
     if (vehicles.length === 0) {
       return res.status(404).json({ error: "Vehicle not found or deleted" });
     }
 
     const { rows: result } = await dbPool.query(
-      "INSERT INTO service_history (vehicle_id, date, odometer, title, description, type, cost, parts, labor_cost) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+      `INSERT INTO ${T_SERVICE_HISTORY} (vehicle_id, date, odometer, title, description, type, cost, parts, labor_cost) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         record.vehicleId,
         record.date,
@@ -457,7 +509,7 @@ app.post("/api/vehicles", async (req, res) => {
   const vehicle = req.body;
   try {
     const { rows: result } = await dbPool.query(
-      "INSERT INTO vehicles (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, engine_no, registration_date, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership, is_transferred) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id",
+      `INSERT INTO ${T_VEHICLES} (name, license_plate, status, next_service_date, next_service_odometer, current_odometer, image_url, engine_no, registration_date, insurance_expiry, revenue_license_expiry, revenue_license_region, ownership, is_transferred) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -495,7 +547,7 @@ app.put("/api/vehicles/:id", async (req, res) => {
   const vehicle = req.body;
   try {
     await dbPool.query(
-      "UPDATE vehicles SET name = $1, license_plate = $2, status = $3, next_service_date = $4, next_service_odometer = $5, current_odometer = $6, image_url = $7, engine_no = $8, registration_date = $9, insurance_expiry = $10, revenue_license_expiry = $11, revenue_license_region = $12, ownership = $13, is_transferred = $14 WHERE id = $15 AND is_deleted = FALSE",
+      `UPDATE ${T_VEHICLES} SET name = $1, license_plate = $2, status = $3, next_service_date = $4, next_service_odometer = $5, current_odometer = $6, image_url = $7, engine_no = $8, registration_date = $9, insurance_expiry = $10, revenue_license_expiry = $11, revenue_license_region = $12, ownership = $13, is_transferred = $14 WHERE id = $15 AND is_deleted = FALSE`,
       [
         vehicle.name,
         vehicle.licensePlate,
@@ -533,12 +585,12 @@ app.delete("/api/vehicles/:id", async (req, res) => {
   const vehicleId = req.params.id;
   try {
     // Soft delete associated data first
-    await dbPool.query("UPDATE upcoming_services SET is_deleted = TRUE WHERE vehicle_id = $1", [vehicleId]);
-    await dbPool.query("UPDATE vehicle_images SET is_deleted = TRUE WHERE vehicle_id = $1", [vehicleId]);
-    await dbPool.query("UPDATE service_history SET is_deleted = TRUE WHERE vehicle_id = $1", [vehicleId]);
+    await dbPool.query(`UPDATE ${T_UPCOMING_SERVICES} SET is_deleted = TRUE WHERE vehicle_id = $1`, [vehicleId]);
+    await dbPool.query(`UPDATE ${T_VEHICLE_IMAGES} SET is_deleted = TRUE WHERE vehicle_id = $1`, [vehicleId]);
+    await dbPool.query(`UPDATE ${T_SERVICE_HISTORY} SET is_deleted = TRUE WHERE vehicle_id = $1`, [vehicleId]);
     
     // Soft delete the vehicle
-    await dbPool.query("UPDATE vehicles SET is_deleted = TRUE WHERE id = $1", [vehicleId]);
+    await dbPool.query(`UPDATE ${T_VEHICLES} SET is_deleted = TRUE WHERE id = $1`, [vehicleId]);
     
     res.status(204).send();
   } catch (error: any) {
@@ -555,7 +607,7 @@ app.get("/api/system-updates", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const { rows }: any = await dbPool.query("SELECT * FROM system_updates WHERE is_deleted = FALSE ORDER BY created_at DESC LIMIT 5");
+    const { rows }: any = await dbPool.query(`SELECT * FROM ${T_SYSTEM_UPDATES} WHERE is_deleted = FALSE ORDER BY created_at DESC LIMIT 5`);
     res.json(rows.map((row: any) => ({
       id: row.id,
       message: row.message,
@@ -574,7 +626,7 @@ app.post("/api/system-updates", async (req, res) => {
   const { message } = req.body;
   try {
     const { rows: result }: any = await dbPool.query(
-      "INSERT INTO system_updates (message) VALUES ($1) RETURNING id",
+      `INSERT INTO ${T_SYSTEM_UPDATES} (message) VALUES ($1) RETURNING id`,
       [message]
     );
     res.status(201).json({ id: result[0].id, message, isNew: true });
@@ -590,7 +642,7 @@ app.get("/api/upcoming-services", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const { rows }: any = await dbPool.query(
-      "SELECT us.*, v.name as vehicleName, v.license_plate as licensePlate, v.image_url as vehicleImageUrl FROM upcoming_services us JOIN vehicles v ON us.vehicle_id = v.id WHERE us.status = 'Pending' AND us.is_deleted = FALSE AND v.is_deleted = FALSE ORDER BY us.due_date ASC"
+      `SELECT us.*, v.name as vehicleName, v.license_plate as licensePlate, v.image_url as vehicleImageUrl FROM ${T_UPCOMING_SERVICES} us JOIN ${T_VEHICLES} v ON us.vehicle_id = v.id WHERE us.status = 'Pending' AND us.is_deleted = FALSE AND v.is_deleted = FALSE ORDER BY us.due_date ASC`
     );
     res.json(rows.map((row: any) => ({
       id: row.id,
@@ -616,7 +668,7 @@ app.get("/api/upcoming-services/:vehicleId", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const { rows }: any = await dbPool.query(
-      "SELECT * FROM upcoming_services WHERE vehicle_id = $1 AND status = 'Pending' AND is_deleted = FALSE ORDER BY due_date ASC",
+      `SELECT * FROM ${T_UPCOMING_SERVICES} WHERE vehicle_id = $1 AND status = 'Pending' AND is_deleted = FALSE ORDER BY due_date ASC`,
       [req.params.vehicleId]
     );
     res.json(rows.map((row: any) => ({
@@ -641,13 +693,13 @@ app.post("/api/upcoming-services", async (req, res) => {
   const service = req.body;
   try {
     // Check if vehicle exists and is not deleted
-    const { rows: vehicles }: any = await dbPool.query("SELECT id FROM vehicles WHERE id = $1 AND is_deleted = FALSE", [service.vehicleId]);
+    const { rows: vehicles }: any = await dbPool.query(`SELECT id FROM ${T_VEHICLES} WHERE id = $1 AND is_deleted = FALSE`, [service.vehicleId]);
     if (vehicles.length === 0) {
       return res.status(404).json({ error: "Vehicle not found or deleted" });
     }
 
     const { rows: result }: any = await dbPool.query(
-      "INSERT INTO upcoming_services (vehicle_id, title, description, due_date, due_odometer, priority) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+      `INSERT INTO ${T_UPCOMING_SERVICES} (vehicle_id, title, description, due_date, due_odometer, priority) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [service.vehicleId, service.title, service.description, service.dueDate, service.dueOdometer, service.priority || 'Medium']
     );
     res.status(201).json({ id: result[0].id, ...service });
@@ -661,7 +713,7 @@ app.delete("/api/upcoming-services/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("UPDATE upcoming_services SET is_deleted = TRUE WHERE id = $1", [req.params.id]);
+    await dbPool.query(`UPDATE ${T_UPCOMING_SERVICES} SET is_deleted = TRUE WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting upcoming service:", error);
@@ -675,7 +727,7 @@ app.put("/api/upcoming-services/:id", async (req, res) => {
   const service = req.body;
   try {
     await dbPool.query(
-      "UPDATE upcoming_services SET title = $1, description = $2, due_date = $3, due_odometer = $4, priority = $5, status = $6 WHERE id = $7 AND is_deleted = FALSE",
+      `UPDATE ${T_UPCOMING_SERVICES} SET title = $1, description = $2, due_date = $3, due_odometer = $4, priority = $5, status = $6 WHERE id = $7 AND is_deleted = FALSE`,
       [service.title, service.description, service.dueDate, service.dueOdometer, service.priority, service.status, req.params.id]
     );
     res.json({ id: req.params.id, ...service });
@@ -691,7 +743,7 @@ app.get("/api/vehicles/:id/images", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
     const { rows }: any = await dbPool.query(
-      "SELECT * FROM vehicle_images WHERE vehicle_id = $1 AND is_deleted = FALSE ORDER BY created_at DESC",
+      `SELECT * FROM ${T_VEHICLE_IMAGES} WHERE vehicle_id = $1 AND is_deleted = FALSE ORDER BY created_at DESC`,
       [req.params.id]
     );
     res.json(rows.map((row: any) => ({
@@ -715,13 +767,13 @@ app.post("/api/vehicles/:id/images", async (req, res) => {
   const vehicleId = req.params.id;
   try {
     // Check if vehicle exists and is not deleted
-    const { rows: vehicles }: any = await dbPool.query("SELECT id FROM vehicles WHERE id = $1 AND is_deleted = FALSE", [vehicleId]);
+    const { rows: vehicles }: any = await dbPool.query(`SELECT id FROM ${T_VEHICLES} WHERE id = $1 AND is_deleted = FALSE`, [vehicleId]);
     if (vehicles.length === 0) {
       return res.status(404).json({ error: "Vehicle not found or deleted" });
     }
 
     const { rows: result }: any = await dbPool.query(
-      "INSERT INTO vehicle_images (vehicle_id, topic, description, image_url) VALUES ($1, $2, $3, $4) RETURNING id",
+      `INSERT INTO ${T_VEHICLE_IMAGES} (vehicle_id, topic, description, image_url) VALUES ($1, $2, $3, $4) RETURNING id`,
       [vehicleId, topic, description, imageUrl]
     );
     res.status(201).json({ 
@@ -742,7 +794,7 @@ app.delete("/api/vehicle-images/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("UPDATE vehicle_images SET is_deleted = TRUE WHERE id = $1", [req.params.id]);
+    await dbPool.query(`UPDATE ${T_VEHICLE_IMAGES} SET is_deleted = TRUE WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting vehicle image:", error);
@@ -756,7 +808,7 @@ app.put("/api/vehicle-images/:id", async (req, res) => {
   const { topic, description, imageUrl } = req.body;
   try {
     await dbPool.query(
-      "UPDATE vehicle_images SET topic = $1, description = $2, image_url = $3 WHERE id = $4 AND is_deleted = FALSE",
+      `UPDATE ${T_VEHICLE_IMAGES} SET topic = $1, description = $2, image_url = $3 WHERE id = $4 AND is_deleted = FALSE`,
       [topic, description, imageUrl, req.params.id]
     );
     res.json({ id: req.params.id, topic, description, imageUrl });
@@ -771,7 +823,7 @@ app.get("/api/users", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    const { rows }: any = await dbPool.query("SELECT id, email, role, profile_image_url, created_at FROM users WHERE is_deleted = FALSE ORDER BY created_at DESC");
+    const { rows }: any = await dbPool.query(`SELECT id, email, role, profile_image_url, created_at FROM ${T_USERS} WHERE is_deleted = FALSE ORDER BY created_at DESC`);
     res.json(rows.map((row: any) => ({
       id: row.id.toString(),
       email: row.email,
@@ -791,7 +843,7 @@ app.post("/api/users", async (req, res) => {
   const { email, password, role, profileImageUrl } = req.body;
   try {
     const { rows: result }: any = await dbPool.query(
-      "INSERT INTO users (email, password, role, profile_image_url) VALUES ($1, $2, $3, $4) RETURNING id",
+      `INSERT INTO ${T_USERS} (email, password, role, profile_image_url) VALUES ($1, $2, $3, $4) RETURNING id`,
       [email, password, role || 'user', profileImageUrl || null]
     );
     res.status(201).json({ id: result[0].id.toString(), email, role: role || 'user', profileImageUrl });
@@ -810,11 +862,11 @@ app.put("/api/users/:id", async (req, res) => {
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   const { email, password, role, profileImageUrl } = req.body;
   try {
-    let query = "UPDATE users SET email = $1, role = $2, profile_image_url = $3 WHERE id = $4 AND is_deleted = FALSE";
+    let query = `UPDATE ${T_USERS} SET email = $1, role = $2, profile_image_url = $3 WHERE id = $4 AND is_deleted = FALSE`;
     let params = [email, role, profileImageUrl, req.params.id];
     
     if (password) {
-      query = "UPDATE users SET email = $1, password = $2, role = $3, profile_image_url = $4 WHERE id = $5 AND is_deleted = FALSE";
+      query = `UPDATE ${T_USERS} SET email = $1, password = $2, role = $3, profile_image_url = $4 WHERE id = $5 AND is_deleted = FALSE`;
       params = [email, password, role, profileImageUrl, req.params.id];
     }
     
@@ -830,7 +882,7 @@ app.delete("/api/users/:id", async (req, res) => {
   const dbPool = await getPool();
   if (!dbPool) return res.status(503).json({ error: "Database not configured" });
   try {
-    await dbPool.query("UPDATE users SET is_deleted = TRUE WHERE id = $1", [req.params.id]);
+    await dbPool.query(`UPDATE ${T_USERS} SET is_deleted = TRUE WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting user:", error);
@@ -846,7 +898,7 @@ app.post("/api/login", async (req, res) => {
   
   try {
     const { rows }: any = await dbPool.query(
-      "SELECT * FROM users WHERE email = $1 AND password = $2 AND is_deleted = FALSE",
+      `SELECT * FROM ${T_USERS} WHERE email = $1 AND password = $2 AND is_deleted = FALSE`,
       [email, password]
     );
     
