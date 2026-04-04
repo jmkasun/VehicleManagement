@@ -288,7 +288,9 @@ async function initDb() {
     // Create basic table if it doesn't exist at all
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS ${T_USERS} (
-        username TEXT PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
+        username TEXT,
+        email VARCHAR(255) UNIQUE NOT NULL,
         password TEXT NOT NULL,
         role TEXT DEFAULT 'user'
       )
@@ -297,6 +299,7 @@ async function initDb() {
     // Add missing columns to existing users table
     const columnsToAdd = [
       { name: 'id', type: 'SERIAL' },
+      { name: 'username', type: 'TEXT' },
       { name: 'email', type: 'VARCHAR(255) UNIQUE' },
       { name: 'profile_image_url', type: 'TEXT' },
       { name: 'created_at', type: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP' },
@@ -843,8 +846,8 @@ app.post("/api/users", async (req, res) => {
   const { email, password, role, profileImageUrl } = req.body;
   try {
     const { rows: result }: any = await dbPool.query(
-      `INSERT INTO ${T_USERS} (email, password, role, profile_image_url) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [email, password, role || 'user', profileImageUrl || null]
+      `INSERT INTO ${T_USERS} (username, email, password, role, profile_image_url) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [email, email, password, role || 'user', profileImageUrl || null]
     );
     res.status(201).json({ id: result[0].id.toString(), email, role: role || 'user', profileImageUrl });
   } catch (error: any) {
