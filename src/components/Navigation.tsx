@@ -17,9 +17,14 @@ interface TopAppBarProps {
 export function TopAppBar({ user, onLogout, onProfileClick }: TopAppBarProps) {
   return (
     <header className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm flex items-center justify-between px-6 h-16">
-      <div className="flex items-center gap-2">
-        <Car className="w-6 h-6 text-primary" fill="currentColor" />
-        <h1 className="text-xl font-extrabold tracking-tight text-primary italic">V-Manage</h1>
+      <div className="flex items-center gap-3 group cursor-pointer">
+        <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 group-hover:rotate-6 transition-transform">
+          <Car className="w-6 h-6 text-white" />
+        </div>
+        <div className="flex flex-col leading-none">
+          <span className="text-lg font-black tracking-tighter text-on-surface">VEHICLE</span>
+          <span className="text-[10px] font-black text-primary uppercase tracking-[0.3em] ml-0.5">Management</span>
+        </div>
       </div>
       <div className="flex items-center gap-4">
         <div className="hidden md:flex flex-col items-end mr-2">

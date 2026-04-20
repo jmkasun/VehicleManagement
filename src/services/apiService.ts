@@ -24,6 +24,16 @@ export const apiService = {
     });
     if (!response.ok) throw new Error('Failed to delete vehicle image');
   },
+
+  async updateVehicleImage(id: string, image: Partial<VehicleImage>): Promise<VehicleImage> {
+    const response = await fetch(`/api/vehicle-images/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(image),
+    });
+    if (!response.ok) throw new Error('Failed to update vehicle image');
+    return response.json();
+  },
   async getVehicles(): Promise<Vehicle[]> {
     const response = await fetch('/api/vehicles');
     if (!response.ok) {
@@ -66,6 +76,16 @@ export const apiService = {
       throw new Error(errorData.details || errorData.error || 'Failed to update vehicle');
     }
     return response.json();
+  },
+
+  async deleteVehicle(id: string): Promise<void> {
+    const response = await fetch(`/api/vehicles/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.details || errorData.error || 'Failed to delete vehicle');
+    }
   },
 
   async addServiceRecord(record: Partial<ServiceRecord>): Promise<ServiceRecord | null> {
@@ -124,6 +144,16 @@ export const apiService = {
       method: 'DELETE',
     });
     if (!response.ok) throw new Error('Failed to delete upcoming service');
+  },
+  
+  async updateUpcomingService(id: string, service: Partial<UpcomingService>): Promise<UpcomingService> {
+    const response = await fetch(`/api/upcoming-services/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(service),
+    });
+    if (!response.ok) throw new Error('Failed to update upcoming service');
+    return response.json();
   },
 
   async login(credentials: any): Promise<User> {

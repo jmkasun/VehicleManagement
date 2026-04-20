@@ -1,9 +1,9 @@
 import React from 'react';
-import { MoreVertical, Calendar, AlertTriangle, Info, PlusCircle } from 'lucide-react';
-import { MOCK_VEHICLES } from '../constants';
+import { MoreVertical, Calendar, AlertTriangle, Info, PlusCircle, Trash2, Edit3, Search, Filter, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 import { Vehicle } from '../types';
+import { ConfirmationModal } from './ConfirmationModal';
 
 interface VehicleListProps {
   vehicles: Vehicle[];
@@ -12,12 +12,22 @@ interface VehicleListProps {
 }
 
 export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: VehicleListProps) {
+  const [filter, setFilter] = React.useState('All Vehicles');
+
+  const filteredVehicles = vehicles.filter(vehicle => {
+    if (filter === 'All Vehicles') return true;
+    return vehicle.status === filter;
+  });
+
   return (
     <div className="space-y-6 pb-8">
       <div className="py-2 flex justify-between items-start">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-on-surface">Vehicles</h2>
-          <p className="text-on-surface-variant text-sm mt-1 font-medium">Manage and track your registered fleet assets</p>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-1.5 h-6 bg-primary rounded-full" />
+            <h2 className="text-3xl font-black tracking-tight text-on-surface">Fleet Assets</h2>
+          </div>
+          <p className="text-on-surface-variant text-sm font-medium">Manage and track your registered vehicle inventory</p>
         </div>
         <button 
           onClick={onAddVehicle}
@@ -28,23 +38,24 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
       </div>
 
       <div className="flex gap-2 mt-6 overflow-x-auto pb-2 no-scrollbar">
-          {['All Vehicles', 'Active', 'Inactive'].map((filter, i) => (
+          {['All Vehicles', 'Active', 'Inactive'].map((f) => (
             <button 
-              key={filter}
+              key={f}
+              onClick={() => setFilter(f)}
               className={cn(
                 "px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all",
-                i === 0 
+                filter === f 
                   ? "bg-primary text-white shadow-lg shadow-primary/20" 
                   : "bg-white border border-outline-variant text-on-surface-variant hover:border-primary"
               )}
             >
-              {filter}
+              {f}
             </button>
           ))}
         </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {vehicles.map((vehicle) => (
+        {filteredVehicles.map((vehicle) => (
           <div 
             key={vehicle.id}
             onClick={() => onSelectVehicle(vehicle)}
@@ -71,9 +82,11 @@ export function VehicleList({ vehicles, onSelectVehicle, onAddVehicle }: Vehicle
                 <div>
                   <div className="flex justify-between items-start">
                     <h3 className="font-black text-on-surface text-lg leading-tight">{vehicle.name}</h3>
-                    <button className="text-outline-variant hover:text-primary transition-colors">
-                      <MoreVertical className="w-5 h-5" />
-                    </button>
+                    <div className="flex gap-2">
+                      <button className="text-outline-variant hover:text-primary transition-colors">
+                        <MoreVertical className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
                   <div className="bg-surface-container-low inline-block px-2 py-1 rounded-lg border border-outline-variant/20 mt-2">
                     <span className="text-[10px] font-mono font-black text-primary uppercase tracking-tighter">{vehicle.licensePlate}</span>

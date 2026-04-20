@@ -16,7 +16,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
     name: '',
     licensePlate: '',
     status: 'Active',
-    imageUrl: `https://picsum.photos/seed/${Math.random()}/800/600`,
+    imageUrl: '',
     nextServiceDate: '',
     nextServiceOdometer: 0,
     currentOdometer: 0,
@@ -35,7 +35,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
         name: '',
         licensePlate: '',
         status: 'Active',
-        imageUrl: `https://picsum.photos/seed/${Math.random()}/800/600`,
+        imageUrl: '',
         nextServiceDate: '',
         nextServiceOdometer: 0,
         currentOdometer: 0,
@@ -135,7 +135,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                         type="text"
                         placeholder="e.g. Toyota Land Cruiser"
                         className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                        value={formData.name}
+                        value={formData.name ?? ''}
                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                       />
                     </div>
@@ -150,7 +150,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                         type="text"
                         placeholder="e.g. WP CAS-9022"
                         className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-mono font-bold uppercase"
-                        value={formData.licensePlate}
+                        value={formData.licensePlate ?? ''}
                         onChange={e => setFormData({ ...formData, licensePlate: e.target.value.toUpperCase() })}
                       />
                     </div>
@@ -162,7 +162,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                     <label className="text-[10px] font-black uppercase tracking-widest text-on-surface-variant ml-1">Status</label>
                     <select 
                       className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.status}
+                      value={formData.status ?? 'Active'}
                       onChange={e => setFormData({ ...formData, status: e.target.value as VehicleStatus })}
                     >
                       <option value="Active">Active</option>
@@ -175,7 +175,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                       type="text"
                       placeholder="e.g. Company Owned / Leased"
                       className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.ownership}
+                      value={formData.ownership ?? ''}
                       onChange={e => setFormData({ ...formData, ownership: e.target.value })}
                     />
                   </div>
@@ -204,7 +204,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                       type="text"
                       placeholder="e.g. Western"
                       className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.revenueLicenseRegion}
+                      value={formData.revenueLicenseRegion ?? ''}
                       onChange={e => setFormData({ ...formData, revenueLicenseRegion: e.target.value })}
                     />
                   </div>
@@ -227,7 +227,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                         type="number"
                         placeholder="e.g. 45000"
                         className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                        value={formData.currentOdometer}
+                        value={formData.currentOdometer ?? 0}
                         onChange={e => setFormData({ ...formData, currentOdometer: parseInt(e.target.value) || 0 })}
                       />
                     </div>
@@ -240,7 +240,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                         type="number"
                         placeholder="e.g. 50000"
                         className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                        value={formData.nextServiceOdometer}
+                        value={formData.nextServiceOdometer ?? 0}
                         onChange={e => setFormData({ ...formData, nextServiceOdometer: parseInt(e.target.value) || 0 })}
                       />
                     </div>
@@ -252,7 +252,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                       <input 
                         type="date"
                         className="w-full pl-11 pr-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                        value={formData.nextServiceDate}
+                        value={formData.nextServiceDate ?? ''}
                         onChange={e => setFormData({ ...formData, nextServiceDate: e.target.value })}
                       />
                     </div>
@@ -265,7 +265,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                     <input 
                       type="date"
                       className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.insuranceExpiry}
+                      value={formData.insuranceExpiry ?? ''}
                       onChange={e => setFormData({ ...formData, insuranceExpiry: e.target.value })}
                     />
                   </div>
@@ -274,7 +274,7 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                     <input 
                       type="date"
                       className="w-full px-4 py-3 bg-surface-container-lowest border border-outline-variant rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all text-sm font-medium"
-                      value={formData.revenueLicenseExpiry}
+                      value={formData.revenueLicenseExpiry ?? ''}
                       onChange={e => setFormData({ ...formData, revenueLicenseExpiry: e.target.value })}
                     />
                   </div>
@@ -306,13 +306,6 @@ export function VehicleModal({ isOpen, onClose, onSave, vehicle }: VehicleModalP
                         >
                           <Camera className="w-4 h-4" />
                           Upload Image
-                        </button>
-                        <button 
-                          type="button"
-                          onClick={() => setFormData({ ...formData, imageUrl: `https://picsum.photos/seed/${Math.random()}/800/600` })}
-                          className="px-4 py-2 bg-white/20 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white flex items-center gap-2 hover:bg-white/30"
-                        >
-                          Random
                         </button>
                       </div>
                     </>

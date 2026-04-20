@@ -3,7 +3,7 @@ import {
   ArrowLeft, Edit3, CheckCircle2, ShieldCheck, 
   FileText, Gauge, History as HistoryIcon, 
   RefreshCw, ChevronRight, FileUp, Download, Car,
-  Calendar, Clock, AlertTriangle, Trash2, Plus,
+  Calendar, Clock, AlertTriangle, Trash2, Plus, Edit2,
   Image as ImageIcon, Camera, X, Wrench, CalendarPlus
 } from 'lucide-react';
 import { Vehicle, UpcomingService, VehicleImage } from '../types';
@@ -11,19 +11,22 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiService } from '../services/apiService';
 import { LogMaintenanceModal } from './LogMaintenanceModal';
+import { ConfirmationModal } from './ConfirmationModal';
 
 interface VehicleDetailsProps {
   vehicle: Vehicle;
   onBack: () => void;
   onEdit: () => void;
+  onDelete: (id: string) => void;
   onViewHistory: () => void;
   scrollToSection?: string;
 }
 
-export function VehicleDetails({ vehicle, onBack, onEdit, onViewHistory, scrollToSection }: VehicleDetailsProps) {
+export function VehicleDetails({ vehicle, onBack, onEdit, onDelete, onViewHistory, scrollToSection }: VehicleDetailsProps) {
   const [upcomingServices, setUpcomingServices] = useState<UpcomingService[]>([]);
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [isAddingService, setIsAddingService] = useState(false);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [newService, setNewService] = useState({
     title: '',
     description: '',
@@ -35,6 +38,7 @@ export function VehicleDetails({ vehicle, onBack, onEdit, onViewHistory, scrollT
   const [vehicleImages, setVehicleImages] = useState<VehicleImage[]>([]);
   const [isLoadingImages, setIsLoadingImages] = useState(false);
   const [isAddingImage, setIsAddingImage] = useState(false);
+  const [editingImageId, setEditingImageId] = useState<string | null>(null);
   const [selectedImageForView, setSelectedImageForView] = useState<VehicleImage | null>(null);
   const [newImage, setNewImage] = useState({
     topic: '',
@@ -91,11 +95,19 @@ export function VehicleDetails({ vehicle, onBack, onEdit, onViewHistory, scrollT
   const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiService.addUpcomingService({
-        ...newService,
-        vehicleId: vehicle.id,
-        status: 'Pending'
-      });
+      if (editingServiceId) {
+        await apiService.updateUpcomingService(editingServiceId, {
+          ...newService,
+          vehicleId: vehicle.id,
+          status: 'Pending'
+        });
+      } else {
+        await apiService.addUpcomingService({
+          ...newService,
+          vehicleId: vehicle.id,
+          status: 'Pending'
+        });
+      }
       setNewService({
         title: '',
         description: '',
@@ -104,40 +116,94 @@ export function VehicleDetails({ vehicle, onBack, onEdit, onViewHistory, scrollT
         priority: 'Medium'
       });
       setIsAddingService(false);
+      setEditingServiceId(null);
       fetchUpcomingServices();
     } catch (error) {
-      console.error('Failed to add service:', error);
+      console.error('Failed to save service:', error);
     }
   };
 
-  const handleDeleteService = async (id: string) => {
-    try {
-      await apiService.deleteUpcomingService(id);
-      fetchUpcomingServices();
-    } catch (error) {
-      console.error('Failed to delete service:', error);
+  const handleEditService = (service: UpcomingService) => {
+    setNewService({
+      title: service.title,
+      description: service.description || '',
+      dueDate: service.dueDate || '',
+      dueOdometer: service.dueOdometer || 0,
+      priority: service.priority
+    });
+    setEditingServiceId(service.id);
+    setIsAddingService(true);
+    
+    // Scroll to form
+    const element = document.getElementById('upcoming-services-section');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleDeleteService = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Service Task?',
+      message: 'Are you sure you want to remove this upcoming service task? This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await apiService.deleteUpcomingService(id);
+          fetchUpcomingServices();
+        } catch (error) {
+          console.error('Failed to delete service:', error);
+        }
+      }
+    });
   };
 
   const handleAddImage = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await apiService.addVehicleImage(vehicle.id, newImage);
+      if (editingImageId) {
+        await apiService.updateVehicleImage(editingImageId, newImage);
+      } else {
+        await apiService.addVehicleImage(vehicle.id, newImage);
+      }
       setNewImage({ topic: '', description: '', imageUrl: '' });
       setIsAddingImage(false);
+      setEditingImageId(null);
       fetchVehicleImages();
     } catch (error) {
-      console.error('Failed to add vehicle image:', error);
+      console.error('Failed to save vehicle image:', error);
     }
   };
 
-  const handleDeleteImage = async (id: string) => {
-    try {
-      await apiService.deleteVehicleImage(id);
-      fetchVehicleImages();
-    } catch (error) {
-      console.error('Failed to delete vehicle image:', error);
+  const handleEditImage = (img: VehicleImage) => {
+    setNewImage({
+      topic: img.topic,
+      description: img.description || '',
+      imageUrl: img.imageUrl
+    });
+    setEditingImageId(img.id);
+    setIsAddingImage(true);
+
+    // Scroll to form
+    const element = document.getElementById('documents-section');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
     }
+  };
+
+  const handleDeleteImage = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Document/Image?',
+      message: 'Are you sure you want to remove this document or image? This action cannot be undone.',
+      onConfirm: async () => {
+        try {
+          await apiService.deleteVehicleImage(id);
+          fetchVehicleImages();
+        } catch (error) {
+          console.error('Failed to delete vehicle image:', error);
+        }
+      }
+    });
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,6 +218,17 @@ export function VehicleDetails({ vehicle, onBack, onEdit, onViewHistory, scrollT
   };
 
   const [isLogMaintenanceOpen, setIsLogMaintenanceOpen] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const handleGenerateReport = () => {
     const reportData = `
@@ -312,6 +389,20 @@ Generated on: ${new Date().toLocaleString()}
             >
               <Edit3 className="w-4 h-4" />
               Edit Details
+            </button>
+            <button 
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Delete Vehicle?',
+                  message: 'Are you sure you want to remove this vehicle from your fleet? This action cannot be undone and all associated records will be lost.',
+                  onConfirm: () => onDelete(vehicle.id)
+                });
+              }}
+              className="bg-error/10 backdrop-blur-xl hover:bg-error/20 text-error-container px-6 py-3 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 border border-error/20 shadow-xl"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Vehicle
             </button>
           </div>
         </div>
@@ -525,11 +616,25 @@ Generated on: ${new Date().toLocaleString()}
             </div>
           </div>
           <button 
-            onClick={() => setIsAddingService(true)}
+            onClick={() => {
+              if (isAddingService && !editingServiceId) {
+                setIsAddingService(false);
+              } else {
+                setIsAddingService(true);
+                setEditingServiceId(null);
+                setNewService({
+                  title: '',
+                  description: '',
+                  dueDate: '',
+                  dueOdometer: 0,
+                  priority: 'Medium'
+                });
+              }
+            }}
             className="bg-primary text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
           >
-            <Plus className="w-4 h-4" />
-            Add Task
+            {isAddingService && !editingServiceId ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {isAddingService && !editingServiceId ? 'Cancel' : 'Add Task'}
           </button>
         </div>
 
@@ -541,17 +646,22 @@ Generated on: ${new Date().toLocaleString()}
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden mb-8"
             >
-              <form onSubmit={handleAddService} className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/20 space-y-4">
+              <div className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/20 space-y-4">
+                <h4 className="text-lg font-black tracking-tight mb-4 flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-primary" />
+                  {editingServiceId ? 'Edit Task' : 'Create New Task'}
+                </h4>
+                <form onSubmit={handleAddService} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <input 
                     required
                     placeholder="Task Title (e.g. Brake Pad Replacement)"
-                    value={newService.title}
+                    value={newService.title ?? ''}
                     onChange={e => setNewService({...newService, title: e.target.value})}
                     className="bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                   />
                   <select 
-                    value={newService.priority}
+                    value={newService.priority ?? 'Medium'}
                     onChange={e => setNewService({...newService, priority: e.target.value as any})}
                     className="bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                   >
@@ -562,7 +672,7 @@ Generated on: ${new Date().toLocaleString()}
                 </div>
                 <textarea 
                   placeholder="Task Description"
-                  value={newService.description}
+                  value={newService.description ?? ''}
                   onChange={e => setNewService({...newService, description: e.target.value})}
                   className="w-full bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all h-24 resize-none"
                 />
@@ -571,7 +681,7 @@ Generated on: ${new Date().toLocaleString()}
                     <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-outline-variant" />
                     <input 
                       type="date"
-                      value={newService.dueDate}
+                      value={newService.dueDate ?? ''}
                       onChange={e => setNewService({...newService, dueDate: e.target.value})}
                       className="w-full bg-white border-none rounded-xl py-3 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -581,7 +691,7 @@ Generated on: ${new Date().toLocaleString()}
                     <input 
                       type="number"
                       placeholder="Due Odometer (KM)"
-                      value={newService.dueOdometer || ''}
+                      value={newService.dueOdometer ?? ''}
                       onChange={e => setNewService({...newService, dueOdometer: parseInt(e.target.value)})}
                       className="w-full bg-white border-none rounded-xl py-3 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -592,18 +702,22 @@ Generated on: ${new Date().toLocaleString()}
                     type="submit"
                     className="flex-1 bg-primary text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-primary/90 transition-all"
                   >
-                    Save Task
+                    {editingServiceId ? 'Update Task' : 'Save Task'}
                   </button>
                   <button 
                     type="button"
-                    onClick={() => setIsAddingService(false)}
+                    onClick={() => {
+                      setIsAddingService(false);
+                      setEditingServiceId(null);
+                    }}
                     className="flex-1 bg-white border border-outline-variant text-on-surface py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-surface-container-highest transition-all"
                   >
                     Cancel
                   </button>
                 </div>
               </form>
-            </motion.div>
+            </div>
+          </motion.div>
           )}
         </AnimatePresence>
 
@@ -681,12 +795,20 @@ Generated on: ${new Date().toLocaleString()}
                       </div>
                     )}
                   </div>
-                  <button 
-                    onClick={() => handleDeleteService(service.id)}
-                    className="w-10 h-10 rounded-xl bg-white border border-outline-variant/20 flex items-center justify-center text-on-surface-variant hover:text-error hover:border-error/20 transition-all opacity-0 group-hover:opacity-100"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => handleEditService(service)}
+                      className="w-10 h-10 rounded-xl bg-white border border-outline-variant/20 flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary/20 transition-all"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteService(service.id)}
+                      className="w-10 h-10 rounded-xl bg-white border border-outline-variant/20 flex items-center justify-center text-on-surface-variant hover:text-error hover:border-error/20 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))
@@ -707,11 +829,19 @@ Generated on: ${new Date().toLocaleString()}
             </div>
           </div>
           <button 
-            onClick={() => setIsAddingImage(true)}
+            onClick={() => {
+              if (isAddingImage && !editingImageId) {
+                setIsAddingImage(false);
+              } else {
+                setIsAddingImage(true);
+                setEditingImageId(null);
+                setNewImage({ topic: '', description: '', imageUrl: '' });
+              }
+            }}
             className="bg-indigo-600 text-white px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20"
           >
-            <Plus className="w-4 h-4" />
-            Add Image
+            {isAddingImage && !editingImageId ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {isAddingImage && !editingImageId ? 'Cancel' : 'Add Image'}
           </button>
         </div>
 
@@ -723,19 +853,24 @@ Generated on: ${new Date().toLocaleString()}
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden mb-8"
             >
-              <form onSubmit={handleAddImage} className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/20 space-y-4">
+              <div className="bg-surface-container-low p-6 rounded-3xl border border-outline-variant/20 space-y-4">
+                <h4 className="text-lg font-black tracking-tight mb-4 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-indigo-600" />
+                  {editingImageId ? 'Edit Image' : 'Upload New Image'}
+                </h4>
+                <form onSubmit={handleAddImage} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <input 
                       required
                       placeholder="Topic (e.g. Service Book Page 1)"
-                      value={newImage.topic}
+                      value={newImage.topic ?? ''}
                       onChange={e => setNewImage({...newImage, topic: e.target.value})}
                       className="w-full bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
                     <textarea 
                       placeholder="Description"
-                      value={newImage.description}
+                      value={newImage.description ?? ''}
                       onChange={e => setNewImage({...newImage, description: e.target.value})}
                       className="w-full bg-white border-none rounded-xl py-3 px-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all h-24 resize-none"
                     />
@@ -774,18 +909,22 @@ Generated on: ${new Date().toLocaleString()}
                     disabled={!newImage.imageUrl}
                     className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Save Image
+                    {editingImageId ? 'Update Image' : 'Save Image'}
                   </button>
                   <button 
                     type="button"
-                    onClick={() => setIsAddingImage(false)}
+                    onClick={() => {
+                      setIsAddingImage(false);
+                      setEditingImageId(null);
+                    }}
                     className="flex-1 bg-white border border-outline-variant text-on-surface py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-surface-container-highest transition-all"
                   >
                     Cancel
                   </button>
                 </div>
               </form>
-            </motion.div>
+            </div>
+          </motion.div>
           )}
         </AnimatePresence>
 
@@ -808,7 +947,16 @@ Generated on: ${new Date().toLocaleString()}
                     alt={img.topic} 
                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" 
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-on-surface/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                  <div className="absolute inset-0 bg-gradient-to-t from-on-surface/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4 gap-2">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditImage(img);
+                      }}
+                      className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md text-white hover:bg-primary transition-all flex items-center justify-center"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
@@ -827,9 +975,14 @@ Generated on: ${new Date().toLocaleString()}
                     <span className="text-[8px] font-black text-on-surface-variant uppercase tracking-widest opacity-60">
                       {new Date(img.createdAt).toLocaleDateString()}
                     </span>
-                    <button className="text-indigo-600 hover:text-indigo-700">
+                    <a 
+                      href={img.imageUrl} 
+                      download={`${img.topic}.png`}
+                      className="text-indigo-600 hover:text-indigo-700 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <Download className="w-4 h-4" />
-                    </button>
+                    </a>
                   </div>
                 </div>
               </div>
@@ -851,10 +1004,16 @@ Generated on: ${new Date().toLocaleString()}
             </div>
           </div>
           <div className="flex gap-4 w-full lg:w-auto">
-            <button className="flex-1 lg:flex-none px-8 py-4 bg-white border border-outline-variant/30 rounded-2xl text-xs font-black uppercase tracking-widest text-on-surface hover:bg-surface-container-low transition-all shadow-sm">
+            <button 
+              onClick={onViewHistory}
+              className="flex-1 lg:flex-none px-8 py-4 bg-white border border-outline-variant/30 rounded-2xl text-xs font-black uppercase tracking-widest text-on-surface hover:bg-surface-container-low transition-all shadow-sm"
+            >
               View History
             </button>
-            <button className="flex-1 lg:flex-none px-8 py-4 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-primary/30 hover:bg-primary-container transition-all">
+            <button 
+              onClick={() => setIsLogMaintenanceOpen(true)}
+              className="flex-1 lg:flex-none px-8 py-4 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-primary/30 hover:bg-primary-container transition-all"
+            >
               Update After Renewal
             </button>
           </div>
@@ -936,6 +1095,14 @@ Generated on: ${new Date().toLocaleString()}
         onClose={() => setIsLogMaintenanceOpen(false)}
         onSave={handleSaveMaintenance}
         vehicleId={vehicle.id}
+      />
+
+      <ConfirmationModal 
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal({ ...confirmModal, isOpen: false })}
+        onConfirm={confirmModal.onConfirm}
+        title={confirmModal.title}
+        message={confirmModal.message}
       />
     </div>
   );

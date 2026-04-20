@@ -49,6 +49,14 @@ export function Dashboard({ vehicles, alerts, systemUpdates, upcomingServices, o
 
   return (
     <div className="space-y-6 pb-8">
+      {/* Welcome Header */}
+      <div className="py-4">
+        <h1 className="text-4xl font-black tracking-tighter text-on-surface">
+          Fleet<span className="text-primary">Elite</span>
+        </h1>
+        <p className="text-on-surface-variant font-medium mt-1">Welcome back. Here's your fleet status for today.</p>
+      </div>
+
       {/* Quick Actions */}
       <section className="grid grid-cols-2 gap-3">
         <button 

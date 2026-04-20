@@ -128,7 +128,7 @@ export function LogMaintenanceModal({ isOpen, onClose, onSave, vehicleId }: LogM
                     <input
                       type="date"
                       required
-                      value={formData.date}
+                      value={formData.date ?? ''}
                       onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                       className="w-full bg-surface-container-low border-none rounded-2xl py-4 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -142,7 +142,7 @@ export function LogMaintenanceModal({ isOpen, onClose, onSave, vehicleId }: LogM
                     <input
                       type="number"
                       required
-                      value={formData.odometer}
+                      value={formData.odometer ?? 0}
                       onChange={(e) => setFormData({ ...formData, odometer: parseInt(e.target.value) })}
                       className="w-full bg-surface-container-low border-none rounded-2xl py-4 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -156,7 +156,7 @@ export function LogMaintenanceModal({ isOpen, onClose, onSave, vehicleId }: LogM
                   type="text"
                   required
                   placeholder="e.g. 50,000 KM Routine Service"
-                  value={formData.title}
+                  value={formData.title ?? ''}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   className="w-full bg-surface-container-low border-none rounded-2xl py-4 px-6 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                 />
@@ -166,7 +166,7 @@ export function LogMaintenanceModal({ isOpen, onClose, onSave, vehicleId }: LogM
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-on-surface-variant uppercase tracking-widest ml-1">Service Type</label>
                   <select
-                    value={formData.type}
+                    value={formData.type ?? 'Full Service'}
                     onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
                     className="w-full bg-surface-container-low border-none rounded-2xl py-4 px-6 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                   >
@@ -184,7 +184,7 @@ export function LogMaintenanceModal({ isOpen, onClose, onSave, vehicleId }: LogM
                     <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-outline-variant" />
                     <input
                       type="number"
-                      value={formData.laborCost}
+                      value={formData.laborCost ?? 0}
                       onChange={(e) => handleLaborCostChange(parseFloat(e.target.value))}
                       className="w-full bg-surface-container-low border-none rounded-2xl py-4 pl-12 pr-4 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all"
                     />
@@ -197,7 +197,7 @@ export function LogMaintenanceModal({ isOpen, onClose, onSave, vehicleId }: LogM
                 <textarea
                   required
                   placeholder="e.g. Oil filter replaced, Brake pads checked, Air filter cleaned"
-                  value={formData.description}
+                  value={formData.description ?? ''}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full bg-surface-container-low border-none rounded-2xl py-4 px-6 font-bold text-sm focus:ring-2 focus:ring-primary/20 transition-all h-24 resize-none"
                 />
